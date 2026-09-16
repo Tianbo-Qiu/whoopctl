@@ -1,27 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
+
+	"github.com/Tianbo-Qiu/whoopctl/internal/cli"
 )
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	if err := cli.Run(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
-	}
-}
-
-func run(args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("usage: whoopctl <command>")
-	}
-
-	switch args[0] {
-	case "version":
-		fmt.Println("whoopctl dev")
-		return nil
-	default:
-		return fmt.Errorf("unknown command: %s", args[0])
 	}
 }
