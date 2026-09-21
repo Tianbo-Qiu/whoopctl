@@ -79,3 +79,87 @@ func TestSaveCredentialsRequiresClientSecret(t *testing.T) {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
+
+func TestLoadCredentialsReadsConfigFile(t *testing.T) {
+	dir := t.TempDir()
+
+	err := SaveCredentials(dir, Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	})
+	if err != nil {
+		t.Fatalf("SaveCredentials returned error: %v", err)
+	}
+
+	creds, err := LoadCredentials(dir)
+	if err != nil {
+		t.Fatalf("LoadCredentials returned error: %v", err)
+	}
+
+	if got, want := creds.ClientID, "client-id"; got != want {
+		t.Fatalf("ClientID = %q, want %q", got, want)
+	}
+
+	if got, want := creds.ClientSecret, "client-secret"; got != want {
+		t.Fatalf("ClientSecret = %q, want %q", got, want)
+	}
+}
+
+func TestLoadCredentialsReturnsErrorForMissingFile(t *testing.T) {
+	_, err := LoadCredentials(t.TempDir())
+	if err == nil {
+		t.Fatal("LoadCredentials returned nil error")
+	}
+}
+
+func TestLoadCredentialsReturnsErrorForInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := LoadCredentials(dir)
+	if err == nil {
+		t.Fatal("LoadCredentials returned nil error")
+	}
+}
+
+func TestLoadCredentialsRequiresClientID(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	data := []byte(`{"client_secret": "client-secret"}`)
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := LoadCredentials(dir)
+	if err == nil {
+		t.Fatal("LoadCredentials returned nil error")
+	}
+
+	if got, want := err.Error(), "client id is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestLoadCredentialsRequiresClientSecret(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	data := []byte(`{"client_id": "client-id"}`)
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := LoadCredentials(dir)
+	if err == nil {
+		t.Fatal("LoadCredentials returned nil error")
+	}
+
+	if got, want := err.Error(), "client secret is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
