@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
 )
 
@@ -114,6 +115,12 @@ func TestRunAuthLoginPrintsAuthorizeURL(t *testing.T) {
 		StateGenerator: func() (string, error) {
 			return "state-value", nil
 		},
+		WaitForCallback: func(ctx context.Context, state string) (auth.AuthorizationCallback, error) {
+			return auth.AuthorizationCallback{
+				Code:  "auth-code",
+				State: state,
+			}, nil
+		},
 	}
 
 	err = app.Run(context.Background(), []string{"auth", "login"}, &stdout, &stderr)
@@ -140,5 +147,44 @@ func TestRunAuthLoginPrintsAuthorizeURL(t *testing.T) {
 
 	if !strings.Contains(out, "redirect_uri=http%3A%2F%2F127.0.0.1%3A1061%2Fcallback") {
 		t.Fatalf("stdout = %q, missing redirect_uri param", out)
+	}
+
+	if !strings.Contains(out, "Authorization code received.\n") {
+		t.Fatalf("stdout = %q, missing callback confirmation", out)
+	}
+}
+
+func TestRunAuthLoginReturnsCallbackContextError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := t.TempDir()
+
+	err := config.SaveCredentials(dir, config.Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	})
+	if err != nil {
+		t.Fatalf("SaveCredentials returned error: %v", err)
+	}
+
+	app := &App{
+		ConfigDir: dir,
+		StateGenerator: func() (string, error) {
+			return "state-value", nil
+		},
+		WaitForCallback: func(ctx context.Context, state string) (auth.AuthorizationCallback, error) {
+			<-ctx.Done()
+			return auth.AuthorizationCallback{}, ctx.Err()
+		},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = app.Run(ctx, []string{"auth", "login"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err, context.Canceled; got != want {
+		t.Fatalf("error = %v, want %v", got, want)
 	}
 }

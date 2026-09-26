@@ -4,14 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
 )
 
 type App struct {
-	ConfigDir      string
-	StateGenerator func() (string, error)
+	ConfigDir       string
+	StateGenerator  func() (string, error)
+	WaitForCallback func(ctx context.Context, state string) (auth.AuthorizationCallback, error)
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -20,7 +22,6 @@ func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer)
 }
 
 func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
-	_ = ctx
 	_ = stderr
 
 	if len(args) == 0 {
@@ -32,13 +33,13 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 		fmt.Fprintln(stdout, "whoopctl dev")
 		return nil
 	case "auth":
-		return app.runAuth(args[1:], stdout)
+		return app.runAuth(ctx, args[1:], stdout)
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
 }
 
-func (app *App) runAuth(args []string, stdout io.Writer) error {
+func (app *App) runAuth(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: whoopctl auth <command>")
 	}
@@ -47,7 +48,7 @@ func (app *App) runAuth(args []string, stdout io.Writer) error {
 	case "setup":
 		return app.runAuthSetup(args[1:], stdout)
 	case "login":
-		return app.runAuthLogin(stdout)
+		return app.runAuthLogin(ctx, stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -86,7 +87,7 @@ func (app *App) runAuthSetup(args []string, stdout io.Writer) error {
 	return nil
 }
 
-func (app *App) runAuthLogin(stdout io.Writer) error {
+func (app *App) runAuthLogin(ctx context.Context, stdout io.Writer) error {
 	creds, err := config.LoadCredentials(app.ConfigDir)
 	if err != nil {
 		return err
@@ -109,5 +110,19 @@ func (app *App) runAuthLogin(stdout io.Writer) error {
 
 	fmt.Fprintln(stdout, "Open to authorize whoopctl:")
 	fmt.Fprintln(stdout, authURL)
+
+	loginCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	waitForCallback := app.WaitForCallback
+	if waitForCallback == nil {
+		waitForCallback = auth.WaitForAuthorizationCallback
+	}
+
+	if _, err := waitForCallback(loginCtx, state); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(stdout, "Authorization code received.")
 	return nil
 }
