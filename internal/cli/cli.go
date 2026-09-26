@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
 )
 
 type App struct {
-	ConfigDir string
+	ConfigDir      string
+	StateGenerator func() (string, error)
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -44,6 +46,8 @@ func (app *App) runAuth(args []string, stdout io.Writer) error {
 	switch args[0] {
 	case "setup":
 		return app.runAuthSetup(args[1:], stdout)
+	case "login":
+		return app.runAuthLogin(stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -79,5 +83,31 @@ func (app *App) runAuthSetup(args []string, stdout io.Writer) error {
 	}
 
 	fmt.Fprintln(stdout, "WHOOP credentials saved")
+	return nil
+}
+
+func (app *App) runAuthLogin(stdout io.Writer) error {
+	creds, err := config.LoadCredentials(app.ConfigDir)
+	if err != nil {
+		return err
+	}
+
+	stateGenerator := app.StateGenerator
+	if stateGenerator == nil {
+		stateGenerator = auth.StateGenerator
+	}
+
+	state, err := stateGenerator()
+	if err != nil {
+		return err
+	}
+
+	authURL, err := auth.AuthCodeURL(creds.ClientID, state, auth.DefaultScopes)
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintln(stdout, "Open to authorize whoopctl:")
+	fmt.Fprintln(stdout, authURL)
 	return nil
 }

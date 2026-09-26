@@ -5,7 +5,7 @@ import (
 	"encoding/base64"
 )
 
-func NewState() (string, error) {
+func StateGenerator() (string, error) {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return "", err

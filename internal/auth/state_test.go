@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-func TestNewStateReturnsURLSafeRandomState(t *testing.T) {
-	state, err := NewState()
+func TestStateGeneratorReturnsURLSafeRandomState(t *testing.T) {
+	state, err := StateGenerator()
 	if err != nil {
-		t.Fatalf("NewState returned error: %v", err)
+		t.Fatalf("StateGenerator returned error: %v", err)
 	}
 	if state == "" {
 		t.Fatal("state is empty")
