@@ -68,6 +68,52 @@ func ExchangeAuthorizationCode(ctx context.Context, client *http.Client, creds c
 	return normalizeTokenResponse(tokenResponse)
 }
 
+func RefreshAccessToken(ctx context.Context, client *http.Client, creds config.Credentials, refreshToken string) (TokenResponse, error) {
+	refreshToken = strings.TrimSpace(refreshToken)
+	if refreshToken == "" {
+		return TokenResponse{}, fmt.Errorf("refresh token is required")
+	}
+
+	creds, err := config.NormalizeCredentials(creds)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+
+	if client == nil {
+		client = http.DefaultClient
+	}
+
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+	form.Set("client_id", creds.ClientID)
+	form.Set("client_secret", creds.ClientSecret)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, TokenEndpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return TokenResponse{}, err
+	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return TokenResponse{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return TokenResponse{}, fmt.Errorf("token refresh failed: %s", resp.Status)
+	}
+
+	var tokenResponse TokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResponse); err != nil {
+		return TokenResponse{}, err
+	}
+
+	return normalizeTokenResponse(tokenResponse)
+}
+
 func normalizeTokenResponse(tokenResponse TokenResponse) (TokenResponse, error) {
 	tokenResponse.AccessToken = strings.TrimSpace(tokenResponse.AccessToken)
 	tokenResponse.RefreshToken = strings.TrimSpace(tokenResponse.RefreshToken)

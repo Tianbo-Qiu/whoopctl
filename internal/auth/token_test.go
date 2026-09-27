@@ -196,3 +196,110 @@ func TestExchangeAuthorizationCodeValidatesTokenExpiration(t *testing.T) {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }
+
+func TestRefreshAccessTokenSendsRefreshRequest(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if got, want := req.Method, http.MethodPost; got != want {
+				t.Fatalf("method = %q, want %q", got, want)
+			}
+
+			if got, want := req.URL.String(), TokenEndpoint; got != want {
+				t.Fatalf("url = %q, want = %q", got, want)
+			}
+
+			if got, want := req.Header.Get("Content-Type"), "application/x-www-form-urlencoded"; got != want {
+				t.Fatalf("Content-Type = %q, want %q", got, want)
+			}
+
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("ReadAll returned error: %v", err)
+			}
+
+			form, err := url.ParseQuery(string(body))
+			if err != nil {
+				t.Fatalf("ParseQuery returned error: %v", err)
+			}
+
+			assertFormValue(t, form, "grant_type", "refresh_token")
+			assertFormValue(t, form, "refresh_token", "old-refresh-token")
+			assertFormValue(t, form, "client_id", "client-id")
+			assertFormValue(t, form, "client_secret", "client-secret")
+
+			if got := form.Get("redirect_uri"); got != "" {
+				t.Fatalf("redirect_uri = %q, want empty", got)
+			}
+
+			return jsonResponse(t, http.StatusOK, "200 OK", map[string]any{
+				"access_token":  "new-access-token",
+				"refresh_token": "new-refresh-token",
+				"expires_in":    3600,
+				"scope":         "offline read:recovery",
+				"token_type":    "Bearer",
+			}), nil
+		}),
+	}
+
+	resp, err := RefreshAccessToken(context.Background(), client, config.Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	}, "old-refresh-token")
+	if err != nil {
+		t.Fatalf("RefreshAccessToken returned error: %v", err)
+	}
+
+	if got, want := resp.AccessToken, "new-access-token"; got != want {
+		t.Fatalf("AccessToken = %q, want %q", got, want)
+	}
+
+	if got, want := resp.RefreshToken, "new-refresh-token"; got != want {
+		t.Fatalf("RefreshToken = %q, want %q", got, want)
+	}
+
+	if got, want := resp.ExpiresIn, 3600; got != want {
+		t.Fatalf("ExpiresIn = %d, want %d", got, want)
+	}
+
+	if got, want := resp.Scope, "offline read:recovery"; got != want {
+		t.Fatalf("Scope = %q, want %q", got, want)
+	}
+
+	if got, want := resp.TokenType, "bearer"; got != want {
+		t.Fatalf("TokenType = %q, want %q", got, want)
+	}
+}
+
+func TestRefreshAccessTokenRequiresRefreshToken(t *testing.T) {
+	_, err := RefreshAccessToken(context.Background(), nil, config.Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	}, "")
+	if err == nil {
+		t.Fatalf("RefreshAccessToken returned nil error")
+	}
+
+	if got, want := err.Error(), "refresh token is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestRefreshAccessTokenReturnsErrorForNon2xx(t *testing.T) {
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return jsonResponse(t, http.StatusUnauthorized, "401 Unauthorized", map[string]any{}), nil
+		}),
+	}
+
+	_, err := RefreshAccessToken(context.Background(), client, config.Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	}, "old-refresh-token")
+	if err == nil {
+		t.Fatalf("RefreshAccessToken returned nil error")
+	}
+
+	if got, want := err.Error(), "token refresh failed: 401 Unauthorized"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
