@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestSaveCredentialsWritesConfigFile(t *testing.T) {
@@ -160,6 +161,182 @@ func TestLoadCredentialsRequiresClientSecret(t *testing.T) {
 	}
 
 	if got, want := err.Error(), "client secret is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestSaveTokenWritesTokenFile(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "whoopctl")
+	expiresAt := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+
+	err := SaveToken(dir, StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    expiresAt,
+		Scope:        "offline read:recovery",
+		TokenType:    "Bearer",
+	})
+	if err != nil {
+		t.Fatalf("SaveToken returned error: %v", err)
+	}
+
+	dirInfo, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("Stat dir returned error: %v", err)
+	}
+	if got, want := dirInfo.Mode().Perm(), os.FileMode(0o700); got != want {
+		t.Fatalf("dir mode = %v, want %v", got, want)
+	}
+
+	path := filepath.Join(dir, "token.json")
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat returned error: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o600); got != want {
+		t.Fatalf("mode = %v, want %v", got, want)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile returned error: %v", err)
+	}
+
+	var token StoredToken
+	if err := json.Unmarshal(data, &token); err != nil {
+		t.Fatalf("Unmarshal returned error: %v", err)
+	}
+
+	if got, want := token.AccessToken, "access-token"; got != want {
+		t.Fatalf("AccessToken = %q, want %q", got, want)
+	}
+	if got, want := token.RefreshToken, "refresh-token"; got != want {
+		t.Fatalf("RefreshToken = %q, want %q", got, want)
+	}
+	if got, want := token.ExpiresAt, expiresAt; !got.Equal(want) {
+		t.Fatalf("ExpiresAt = %v, want %v", got, want)
+	}
+	if got, want := token.Scope, "offline read:recovery"; got != want {
+		t.Fatalf("Scope = %q, want %q", got, want)
+	}
+	if got, want := token.TokenType, "bearer"; got != want {
+		t.Fatalf("TokenType = %q, want %q", got, want)
+	}
+}
+
+func TestLoadTokenReadsTokenFile(t *testing.T) {
+	dir := t.TempDir()
+	expiresAt := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+
+	err := SaveToken(dir, StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    expiresAt,
+		Scope:        "offline read:recovery",
+		TokenType:    "Bearer",
+	})
+	if err != nil {
+		t.Fatalf("SaveToken returned error: %v", err)
+	}
+
+	token, err := LoadToken(dir)
+	if err != nil {
+		t.Fatalf("LoadToken returned error: %v", err)
+	}
+
+	if got, want := token.AccessToken, "access-token"; got != want {
+		t.Fatalf("AccessToken = %q, want %q", got, want)
+	}
+	if got, want := token.RefreshToken, "refresh-token"; got != want {
+		t.Fatalf("RefreshToken = %q, want %q", got, want)
+	}
+	if got, want := token.ExpiresAt, expiresAt; !got.Equal(want) {
+		t.Fatalf("ExpiresAt = %v, want %v", got, want)
+	}
+	if got, want := token.Scope, "offline read:recovery"; got != want {
+		t.Fatalf("Scope = %q, want %q", got, want)
+	}
+	if got, want := token.TokenType, "bearer"; got != want {
+		t.Fatalf("TokenType = %q, want %q", got, want)
+	}
+}
+
+func TestLoadTokenReturnsErrorForMissingFile(t *testing.T) {
+	_, err := LoadToken(t.TempDir())
+	if err == nil {
+		t.Fatal("LoadToken returned nil error")
+	}
+}
+
+func TestLoadTokenReturnsErrorForInvalidJSON(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "token.json")
+
+	if err := os.WriteFile(path, []byte("{"), 0o600); err != nil {
+		t.Fatalf("WriteFile returned error: %v", err)
+	}
+
+	_, err := LoadToken(dir)
+	if err == nil {
+		t.Fatal("LoadToken returned nil error")
+	}
+}
+
+func TestSaveTokenRequiresAccessToken(t *testing.T) {
+	err := SaveToken(t.TempDir(), StoredToken{
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(time.Hour),
+		TokenType:    "bearer",
+	})
+	if err == nil {
+		t.Fatal("SaveToken returned nil error")
+	}
+	if got, want := err.Error(), "access token is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestSaveTokenRequiresRefreshToken(t *testing.T) {
+	err := SaveToken(t.TempDir(), StoredToken{
+		AccessToken: "access-token",
+		ExpiresAt:   time.Now().Add(time.Hour),
+		TokenType:   "bearer",
+	})
+	if err == nil {
+		t.Fatal("SaveToken returned nil error")
+	}
+	if got, want := err.Error(), "refresh token is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestSaveTokenRequiresExpiresAt(t *testing.T) {
+	err := SaveToken(t.TempDir(), StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		TokenType:    "bearer",
+	})
+	if err == nil {
+		t.Fatal("SaveToken returned nil error")
+	}
+	if got, want := err.Error(), "expires at is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestSaveTokenRequiresBearerTokenType(t *testing.T) {
+	err := SaveToken(t.TempDir(), StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Now().Add(time.Hour),
+		TokenType:    "mac",
+	})
+	if err == nil {
+		t.Fatal("SaveToken returned nil error")
+	}
+	if got, want := err.Error(), "unsupported token type: mac"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
 	}
 }

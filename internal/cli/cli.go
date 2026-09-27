@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net/http"
 	"time"
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
@@ -11,9 +12,10 @@ import (
 )
 
 type App struct {
-	ConfigDir       string
-	StateGenerator  func() (string, error)
-	WaitForCallback func(ctx context.Context, state string) (auth.AuthorizationCallback, error)
+	ConfigDir                 string
+	StateGenerator            func() (string, error)
+	WaitForCallback           func(ctx context.Context, state string) (auth.AuthorizationCallback, error)
+	ExchangeAuthorizationCode func(ctx context.Context, creds config.Credentials, code string) (auth.TokenResponse, error)
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -119,10 +121,35 @@ func (app *App) runAuthLogin(ctx context.Context, stdout io.Writer) error {
 		waitForCallback = auth.WaitForAuthorizationCallback
 	}
 
-	if _, err := waitForCallback(loginCtx, state); err != nil {
+	resp, err := waitForCallback(loginCtx, state)
+	if err != nil {
 		return err
 	}
 
-	fmt.Fprintln(stdout, "Authorization code received.")
+	exchangeAuthorizationCode := app.ExchangeAuthorizationCode
+	if exchangeAuthorizationCode == nil {
+		exchangeAuthorizationCode = func(ctx context.Context, creds config.Credentials, code string) (auth.TokenResponse, error) {
+			return auth.ExchangeAuthorizationCode(ctx, http.DefaultClient, creds, code)
+		}
+	}
+
+	tokenResponse, err := exchangeAuthorizationCode(loginCtx, creds, resp.Code)
+	if err != nil {
+		return err
+	}
+
+	storedToken := config.StoredToken{
+		AccessToken:  tokenResponse.AccessToken,
+		RefreshToken: tokenResponse.RefreshToken,
+		ExpiresAt:    time.Now().Add(time.Duration(tokenResponse.ExpiresIn) * time.Second),
+		Scope:        tokenResponse.Scope,
+		TokenType:    tokenResponse.TokenType,
+	}
+
+	if err := config.SaveToken(app.ConfigDir, storedToken); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(stdout, "Authorization complete.")
 	return nil
 }

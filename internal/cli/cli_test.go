@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
@@ -121,9 +122,29 @@ func TestRunAuthLoginPrintsAuthorizeURL(t *testing.T) {
 				State: state,
 			}, nil
 		},
+		ExchangeAuthorizationCode: func(ctx context.Context, creds config.Credentials, code string) (auth.TokenResponse, error) {
+			if got, want := creds.ClientID, "client-id"; got != want {
+				t.Fatalf("ClientID = %q, want %q", got, want)
+			}
+			if got, want := creds.ClientSecret, "client-secret"; got != want {
+				t.Fatalf("ClientSecret = %q, want %q", got, want)
+			}
+			if got, want := code, "auth-code"; got != want {
+				t.Fatalf("code = %q, want %q", got, want)
+			}
+			return auth.TokenResponse{
+				AccessToken:  "access-token",
+				RefreshToken: "refresh-token",
+				ExpiresIn:    3600,
+				Scope:        "offline read:recovery",
+				TokenType:    "bearer",
+			}, nil
+		},
 	}
 
+	beforeExpiresAt := time.Now().Add(time.Hour)
 	err = app.Run(context.Background(), []string{"auth", "login"}, &stdout, &stderr)
+	afterExpiresAt := time.Now().Add(time.Hour)
 	if err != nil {
 		t.Fatalf("Run auth login returned error: %v", err)
 	}
@@ -149,8 +170,28 @@ func TestRunAuthLoginPrintsAuthorizeURL(t *testing.T) {
 		t.Fatalf("stdout = %q, missing redirect_uri param", out)
 	}
 
-	if !strings.Contains(out, "Authorization code received.\n") {
+	if !strings.Contains(out, "Authorization complete.\n") {
 		t.Fatalf("stdout = %q, missing callback confirmation", out)
+	}
+
+	token, err := config.LoadToken(dir)
+	if err != nil {
+		t.Fatalf("LoadToken returned error: %v", err)
+	}
+	if got, want := token.AccessToken, "access-token"; got != want {
+		t.Fatalf("AccessToken = %q, want %q", got, want)
+	}
+	if got, want := token.RefreshToken, "refresh-token"; got != want {
+		t.Fatalf("RefreshToken = %q, want %q", got, want)
+	}
+	if token.ExpiresAt.Before(beforeExpiresAt) || token.ExpiresAt.After(afterExpiresAt) {
+		t.Fatalf("ExpiresAt = %v, want between %v and %v", token.ExpiresAt, beforeExpiresAt, afterExpiresAt)
+	}
+	if got, want := token.Scope, "offline read:recovery"; got != want {
+		t.Fatalf("Scope = %q, want %q", got, want)
+	}
+	if got, want := token.TokenType, "bearer"; got != want {
+		t.Fatalf("TokenType = %q, want %q", got, want)
 	}
 }
 
