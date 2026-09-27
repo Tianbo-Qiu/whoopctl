@@ -44,6 +44,29 @@ func (m *TokenManager) AccessToken(ctx context.Context) (string, error) {
 		return token.AccessToken, nil
 	}
 
+	return m.refresh(ctx, creds, token, now())
+}
+
+func (m *TokenManager) Refresh(ctx context.Context) (string, error) {
+	creds, err := config.LoadCredentials(m.ConfigDir)
+	if err != nil {
+		return "", fmt.Errorf("%w; load credentials failed: %v", ErrSetupRequired, err)
+	}
+
+	token, err := config.LoadToken(m.ConfigDir)
+	if err != nil {
+		return "", fmt.Errorf("%w; load token failed: %v", ErrLoginRequired, err)
+	}
+
+	now := time.Now
+	if m.Now != nil {
+		now = m.Now
+	}
+
+	return m.refresh(ctx, creds, token, now())
+}
+
+func (m *TokenManager) refresh(ctx context.Context, creds config.Credentials, token config.StoredToken, now time.Time) (string, error) {
 	client := m.Client
 	if client == nil {
 		client = http.DefaultClient
@@ -57,7 +80,7 @@ func (m *TokenManager) AccessToken(ctx context.Context) (string, error) {
 	refreshed := config.StoredToken{
 		AccessToken:  resp.AccessToken,
 		RefreshToken: resp.RefreshToken,
-		ExpiresAt:    now().Add(time.Duration(resp.ExpiresIn) * time.Second),
+		ExpiresAt:    now.Add(time.Duration(resp.ExpiresIn) * time.Second),
 		Scope:        resp.Scope,
 		TokenType:    resp.TokenType,
 	}

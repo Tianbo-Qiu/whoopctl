@@ -188,6 +188,56 @@ func TestRunAuthStatusShowsExpiredToken(t *testing.T) {
 	}
 }
 
+func TestRunAuthRefresh(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	called := false
+
+	app := &App{
+		ConfigDir: t.TempDir(),
+		RefreshSession: func(ctx context.Context) error {
+			called = true
+			return nil
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"auth", "refresh"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if !called {
+		t.Fatal("RefreshSession was not called")
+	}
+	if got, want := stdout.String(), "Token refreshed\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if got := stderr.String(); got != "" {
+		t.Fatalf("stderr = %q, want empty", got)
+	}
+}
+
+func TestRunAuthRefreshReturnsError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := &App{
+		ConfigDir: t.TempDir(),
+		RefreshSession: func(ctx context.Context) error {
+			return fmt.Errorf("refresh failed")
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"auth", "refresh"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "refresh failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want empty", got)
+	}
+}
+
 func TestRunAuthLoginPrintsAuthorizeURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	dir := t.TempDir()

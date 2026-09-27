@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
+	"github.com/Tianbo-Qiu/whoopctl/internal/session"
 )
 
 type App struct {
@@ -16,6 +17,7 @@ type App struct {
 	StateGenerator            func() (string, error)
 	WaitForCallback           func(ctx context.Context, state string) (auth.AuthorizationCallback, error)
 	ExchangeAuthorizationCode func(ctx context.Context, creds config.Credentials, code string) (auth.TokenResponse, error)
+	RefreshSession            func(ctx context.Context) error
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
@@ -53,6 +55,8 @@ func (app *App) runAuth(ctx context.Context, args []string, stdout io.Writer) er
 		return app.runAuthLogin(ctx, stdout)
 	case "status":
 		return app.runAuthStatus(stdout)
+	case "refresh":
+		return app.runAuthRefresh(ctx, stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -176,5 +180,23 @@ func (app *App) runAuthStatus(stdout io.Writer) error {
 	}
 
 	fmt.Fprintf(stdout, "Token: expired at %s\n", expiresAt)
+	return nil
+}
+
+func (app *App) runAuthRefresh(ctx context.Context, stdout io.Writer) error {
+	refreshSession := app.RefreshSession
+	if refreshSession == nil {
+		refreshSession = func(ctx context.Context) error {
+			manager := &session.TokenManager{ConfigDir: app.ConfigDir}
+			_, err := manager.Refresh(ctx)
+			return err
+		}
+	}
+
+	if err := refreshSession(ctx); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(stdout, "Token refreshed")
 	return nil
 }

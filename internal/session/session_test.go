@@ -143,6 +143,50 @@ func TestTokenManagerRefreshesTokenWithinSkew(t *testing.T) {
 	}
 }
 
+func TestTokenManagerRefreshForcesRefreshWhenTokenStillValid(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
+
+	saveCredentialsAndToken(t, dir, config.StoredToken{
+		AccessToken:  "old-access-token",
+		RefreshToken: "old-refresh-token",
+		ExpiresAt:    now.Add(time.Hour),
+		Scope:        "offline read:recovery",
+		TokenType:    "bearer",
+	})
+
+	manager := &TokenManager{
+		ConfigDir: dir,
+		Now: func() time.Time {
+			return now
+		},
+		Client: refreshClient(t, "old-refresh-token", http.StatusOK, "200 OK", map[string]any{
+			"access_token":  "new-access-token",
+			"refresh_token": "new-refresh-token",
+			"expires_in":    3600,
+			"scope":         "offline read:recovery",
+			"token_type":    "Bearer",
+		}),
+	}
+
+	accessToken, err := manager.Refresh(context.Background())
+	if err != nil {
+		t.Fatalf("Refresh returned error: %v", err)
+	}
+
+	if got, want := accessToken, "new-access-token"; got != want {
+		t.Fatalf("accessToken = %q, want %q", got, want)
+	}
+
+	token, err := config.LoadToken(dir)
+	if err != nil {
+		t.Fatalf("LoadToken returned error: %v", err)
+	}
+	if got, want := token.RefreshToken, "new-refresh-token"; got != want {
+		t.Fatalf("RefreshToken = %q, want %q", got, want)
+	}
+}
+
 func TestTokenManagerReturnsRefreshError(t *testing.T) {
 	dir := t.TempDir()
 	now := time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC)
