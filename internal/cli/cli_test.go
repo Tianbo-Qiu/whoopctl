@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +97,94 @@ func TestRunAuthUnknownCommand(t *testing.T) {
 	}
 	if got, want := err.Error(), "unknown auth command: nope"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestRunAuthStatusShowsMissingCredentialsAndToken(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	app := &App{ConfigDir: t.TempDir()}
+
+	err := app.Run(context.Background(), []string{"auth", "status"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if got, want := stdout.String(), "Credentials: missing\nToken: missing\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunAuthStatusShowsValidToken(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := t.TempDir()
+	expiresAt := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+
+	err := config.SaveCredentials(dir, config.Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	})
+	if err != nil {
+		t.Fatalf("SaveCredentials returned error: %v", err)
+	}
+
+	err = config.SaveToken(dir, config.StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    expiresAt,
+		Scope:        "offline read:recovery",
+		TokenType:    "bearer",
+	})
+	if err != nil {
+		t.Fatalf("SaveToken returned error: %v", err)
+	}
+
+	app := &App{ConfigDir: dir}
+
+	err = app.Run(context.Background(), []string{"auth", "status"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := fmt.Sprintf("Credentials: configured\nToken: valid until %s\n", expiresAt.Format(time.RFC3339))
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunAuthStatusShowsExpiredToken(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := t.TempDir()
+	expiresAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+
+	err := config.SaveCredentials(dir, config.Credentials{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+	})
+	if err != nil {
+		t.Fatalf("SaveCredentials returned error: %v", err)
+	}
+
+	err = config.SaveToken(dir, config.StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    expiresAt,
+		Scope:        "offline read:recovery",
+		TokenType:    "bearer",
+	})
+	if err != nil {
+		t.Fatalf("SaveToken returned error: %v", err)
+	}
+
+	app := &App{ConfigDir: dir}
+
+	err = app.Run(context.Background(), []string{"auth", "status"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := fmt.Sprintf("Credentials: configured\nToken: expired at %s\n", expiresAt.Format(time.RFC3339))
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 }
 

@@ -51,6 +51,8 @@ func (app *App) runAuth(ctx context.Context, args []string, stdout io.Writer) er
 		return app.runAuthSetup(args[1:], stdout)
 	case "login":
 		return app.runAuthLogin(ctx, stdout)
+	case "status":
+		return app.runAuthStatus(stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -151,5 +153,28 @@ func (app *App) runAuthLogin(ctx context.Context, stdout io.Writer) error {
 	}
 
 	fmt.Fprintln(stdout, "Authorization complete.")
+	return nil
+}
+
+func (app *App) runAuthStatus(stdout io.Writer) error {
+	if _, err := config.LoadCredentials(app.ConfigDir); err != nil {
+		fmt.Fprintln(stdout, "Credentials: missing")
+	} else {
+		fmt.Fprintln(stdout, "Credentials: configured")
+	}
+
+	token, err := config.LoadToken(app.ConfigDir)
+	if err != nil {
+		fmt.Fprintln(stdout, "Token: missing")
+		return nil
+	}
+
+	expiresAt := token.ExpiresAt.UTC().Format(time.RFC3339)
+	if time.Now().Before(token.ExpiresAt) {
+		fmt.Fprintf(stdout, "Token: valid until %s\n", expiresAt)
+		return nil
+	}
+
+	fmt.Fprintf(stdout, "Token: expired at %s\n", expiresAt)
 	return nil
 }
