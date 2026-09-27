@@ -25,7 +25,7 @@ func ConfigPath(configDir string) (string, error) {
 }
 
 func SaveCredentials(configDir string, creds Credentials) error {
-	creds, err := normalizeCredentials(creds)
+	creds, err := NormalizeCredentials(creds)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func LoadCredentials(configDir string) (Credentials, error) {
 		return Credentials{}, err
 	}
 
-	creds, err = normalizeCredentials(creds)
+	creds, err = NormalizeCredentials(creds)
 	if err != nil {
 		return Credentials{}, err
 	}
@@ -73,7 +73,7 @@ func LoadCredentials(configDir string) (Credentials, error) {
 	return creds, nil
 }
 
-func normalizeCredentials(creds Credentials) (Credentials, error) {
+func NormalizeCredentials(creds Credentials) (Credentials, error) {
 	creds.ClientID = strings.TrimSpace(creds.ClientID)
 	creds.ClientSecret = strings.TrimSpace(creds.ClientSecret)
 	if creds.ClientID == "" {
