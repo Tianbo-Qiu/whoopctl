@@ -62,7 +62,7 @@ func TestRecoverySendsRequestAndDecodesResponse(t *testing.T) {
 		},
 	}
 
-	recovery, err := client.Recovery(context.Background(), " access-token ")
+	recovery, err := client.Recovery(context.Background(), " access-token ", RecoveryQuery{})
 	if err != nil {
 		t.Fatalf("Recovery returned error: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestRecoverySendsRequestAndDecodesResponse(t *testing.T) {
 func TestRecoveryRequiresAccessToken(t *testing.T) {
 	client := &Client{}
 
-	_, err := client.Recovery(context.Background(), "")
+	_, err := client.Recovery(context.Background(), "", RecoveryQuery{})
 	if err == nil {
 		t.Fatal("Recovery returned nil error")
 	}
@@ -155,7 +155,7 @@ func TestRecoveryReturnsAPIErrorForNon2xx(t *testing.T) {
 		},
 	}
 
-	_, err := client.Recovery(context.Background(), "access-token")
+	_, err := client.Recovery(context.Background(), "access-token", RecoveryQuery{})
 	if err == nil {
 		t.Fatal("Recovery returned nil error")
 	}
@@ -172,6 +172,46 @@ func TestRecoveryReturnsAPIErrorForNon2xx(t *testing.T) {
 	}
 	if got, want := err.Error(), "whoop api error: 401 Unauthorized - invalid authorization"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestRecoverySendsQueryParams(t *testing.T) {
+	start := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
+	end := time.Date(2026, 1, 3, 3, 4, 5, 987654321, time.UTC)
+
+	client := &Client{
+		BaseURL: "https://example.test/developer",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				query := req.URL.Query()
+				if got, want := query.Get("limit"), "25"; got != want {
+					t.Fatalf("limit = %q, want %q", got, want)
+				}
+				if got, want := query.Get("start"), start.Format(time.RFC3339Nano); got != want {
+					t.Fatalf("start = %q, want %q", got, want)
+				}
+				if got, want := query.Get("end"), end.Format(time.RFC3339Nano); got != want {
+					t.Fatalf("end = %q, want %q", got, want)
+				}
+				if got, want := query.Get("nextToken"), "next-token"; got != want {
+					t.Fatalf("nextToken = %q, want %q", got, want)
+				}
+
+				return jsonResponse(t, http.StatusOK, "200 OK", map[string]any{
+					"records": []any{},
+				}), nil
+			}),
+		},
+	}
+
+	_, err := client.Recovery(context.Background(), "access-token", RecoveryQuery{
+		Limit:     25,
+		Start:     start,
+		End:       end,
+		NextToken: " next-token ",
+	})
+	if err != nil {
+		t.Fatalf("Recovery returned error: %v", err)
 	}
 }
 

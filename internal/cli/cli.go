@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
@@ -29,7 +30,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
-	Recovery(ctx context.Context, accessToken string) (whoop.RecoveryCollection, error)
+	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
 }
 
 func NewApp(configDir string) *App {
@@ -59,7 +60,7 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 	case "auth":
 		return app.runAuth(ctx, args[1:], stdout)
 	case "recovery":
-		return app.runRecovery(ctx, stdout)
+		return app.runRecovery(ctx, args[1:], stdout)
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
@@ -214,13 +215,18 @@ func (app *App) runAuthRefresh(ctx context.Context, stdout io.Writer) error {
 	return nil
 }
 
-func (app *App) runRecovery(ctx context.Context, stdout io.Writer) error {
+func (app *App) runRecovery(ctx context.Context, args []string, stdout io.Writer) error {
+	query, err := recoveryQuery(args)
+	if err != nil {
+		return err
+	}
+
 	token, err := app.tokenManager().AccessToken(ctx)
 	if err != nil {
 		return err
 	}
 
-	recovery, err := app.whoopClient().Recovery(ctx, token)
+	recovery, err := app.whoopClient().Recovery(ctx, token, query)
 	if err != nil {
 		return err
 	}
@@ -228,6 +234,55 @@ func (app *App) runRecovery(ctx context.Context, stdout io.Writer) error {
 	encoder := json.NewEncoder(stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(recovery)
+}
+
+func recoveryQuery(args []string) (whoop.RecoveryQuery, error) {
+	var query whoop.RecoveryQuery
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--limit":
+			i++
+			if i >= len(args) {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--limit requires a value")
+			}
+			limit, err := strconv.Atoi(args[i])
+			if err != nil {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--limit must be an integer")
+			}
+			query.Limit = limit
+		case "--start":
+			i++
+			if i >= len(args) {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--start requires a value")
+			}
+			start, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--start must be RFC3339")
+			}
+			query.Start = start
+		case "--end":
+			i++
+			if i >= len(args) {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--end requires a value")
+			}
+			end, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--end must be RFC3339")
+			}
+			query.End = end
+		case "--next-token":
+			i++
+			if i >= len(args) {
+				return whoop.RecoveryQuery{}, fmt.Errorf("--next-token requires a value")
+			}
+			query.NextToken = args[i]
+		default:
+			return whoop.RecoveryQuery{}, fmt.Errorf("unknown option: %s", args[i])
+		}
+	}
+
+	return query, nil
 }
 
 func (app *App) tokenManager() tokenManager {

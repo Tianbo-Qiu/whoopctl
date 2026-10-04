@@ -65,6 +65,7 @@ func TestRunRecoveryPrintsJSON(t *testing.T) {
 	app.WhoopClient = fakeWhoopClient{
 		t:               t,
 		wantAccessToken: "access-token",
+		wantQuery:       whoop.RecoveryQuery{},
 		recovery: whoop.RecoveryCollection{
 			Records: []whoop.Recovery{
 				{
@@ -120,6 +121,114 @@ func TestRunRecoveryPrintsJSON(t *testing.T) {
 	}
 	if got := stderr.String(); got != "" {
 		t.Fatalf("stderr = %q, want empty", got)
+	}
+}
+
+func TestRunRecoveryPassesQuery(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	start := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
+	end := time.Date(2026, 1, 3, 3, 4, 5, 987654321, time.UTC)
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantQuery: whoop.RecoveryQuery{
+			Limit:     25,
+			Start:     start,
+			End:       end,
+			NextToken: "next-token",
+		},
+		recovery: whoop.RecoveryCollection{Records: []whoop.Recovery{}},
+	}
+
+	err := app.Run(context.Background(), []string{
+		"recovery",
+		"--limit", "25",
+		"--start", start.Format(time.RFC3339Nano),
+		"--end", end.Format(time.RFC3339Nano),
+		"--next-token", "next-token",
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+}
+
+func TestRunRecoveryRejectsInvalidLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing limit",
+			args:    []string{"recovery", "--limit"},
+			wantErr: "--limit requires a value",
+		},
+		{
+			name:    "invalid limit",
+			args:    []string{"recovery", "--limit", "nope"},
+			wantErr: "--limit must be an integer",
+		},
+		{
+			name:    "missing start",
+			args:    []string{"recovery", "--start"},
+			wantErr: "--start requires a value",
+		},
+		{
+			name:    "invalid start",
+			args:    []string{"recovery", "--start", "2026-01-02"},
+			wantErr: "--start must be RFC3339",
+		},
+		{
+			name:    "missing end",
+			args:    []string{"recovery", "--end"},
+			wantErr: "--end requires a value",
+		},
+		{
+			name:    "invalid end",
+			args:    []string{"recovery", "--end", "2026-01-03"},
+			wantErr: "--end must be RFC3339",
+		},
+		{
+			name:    "missing next token",
+			args:    []string{"recovery", "--next-token"},
+			wantErr: "--next-token requires a value",
+		},
+		{
+			name:    "unknown option",
+			args:    []string{"recovery", "--wat"},
+			wantErr: "unknown option: --wat",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			accessTokenCalled := false
+
+			app := NewApp(t.TempDir())
+			app.TokenManager = fakeTokenManager{
+				onAccessToken: func() {
+					accessTokenCalled = true
+				},
+			}
+
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if accessTokenCalled {
+				t.Fatal("AccessToken was called")
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
 	}
 }
 
@@ -474,10 +583,14 @@ type fakeTokenManager struct {
 	accessTokenErr error
 	refreshToken   string
 	refreshErr     error
+	onAccessToken  func()
 	onRefresh      func()
 }
 
 func (f fakeTokenManager) AccessToken(ctx context.Context) (string, error) {
+	if f.onAccessToken != nil {
+		f.onAccessToken()
+	}
 	if f.accessTokenErr != nil {
 		return "", f.accessTokenErr
 	}
@@ -497,16 +610,20 @@ func (f fakeTokenManager) Refresh(ctx context.Context) (string, error) {
 type fakeWhoopClient struct {
 	t               *testing.T
 	wantAccessToken string
+	wantQuery       whoop.RecoveryQuery
 	recovery        whoop.RecoveryCollection
 	recoveryErr     error
 }
 
-func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string) (whoop.RecoveryCollection, error) {
+func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error) {
 	if f.t != nil {
 		f.t.Helper()
 	}
 	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
 		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if query != f.wantQuery {
+		f.t.Fatalf("query = %+v, want %+v", query, f.wantQuery)
 	}
 	if f.recoveryErr != nil {
 		return whoop.RecoveryCollection{}, f.recoveryErr

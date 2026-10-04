@@ -5,11 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
 
 const recoveryPath = "/v2/recovery"
+
+type RecoveryQuery struct {
+	Limit     int
+	Start     time.Time
+	End       time.Time
+	NextToken string
+}
 
 type RecoveryCollection struct {
 	Records   []Recovery `json:"records"`
@@ -35,13 +43,32 @@ type RecoveryScore struct {
 	SkinTempCelsius  *float64 `json:"skin_temp_celsius,omitempty"`
 }
 
-func (c *Client) Recovery(ctx context.Context, accessToken string) (RecoveryCollection, error) {
+func (c *Client) Recovery(ctx context.Context, accessToken string, query RecoveryQuery) (RecoveryCollection, error) {
 	accessToken = strings.TrimSpace(accessToken)
 	if accessToken == "" {
 		return RecoveryCollection{}, fmt.Errorf("access token is required")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint(recoveryPath), nil)
+	endpoint, err := url.Parse(c.endpoint(recoveryPath))
+	if err != nil {
+		return RecoveryCollection{}, err
+	}
+	values := endpoint.Query()
+	if query.Limit > 0 {
+		values.Set("limit", fmt.Sprintf("%d", query.Limit))
+	}
+	if !query.Start.IsZero() {
+		values.Set("start", query.Start.Format(time.RFC3339Nano))
+	}
+	if !query.End.IsZero() {
+		values.Set("end", query.End.Format(time.RFC3339Nano))
+	}
+	if strings.TrimSpace(query.NextToken) != "" {
+		values.Set("nextToken", strings.TrimSpace(query.NextToken))
+	}
+	endpoint.RawQuery = values.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
 	if err != nil {
 		return RecoveryCollection{}, err
 	}
