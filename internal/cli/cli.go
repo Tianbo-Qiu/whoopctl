@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
 	"github.com/Tianbo-Qiu/whoopctl/internal/session"
+	"github.com/Tianbo-Qiu/whoopctl/internal/whoop"
 )
 
 type App struct {
@@ -17,11 +19,29 @@ type App struct {
 	StateGenerator            func() (string, error)
 	WaitForCallback           func(ctx context.Context, state string) (auth.AuthorizationCallback, error)
 	ExchangeAuthorizationCode func(ctx context.Context, creds config.Credentials, code string) (auth.TokenResponse, error)
-	RefreshSession            func(ctx context.Context) error
+	TokenManager              tokenManager
+	WhoopClient               whoopClient
+}
+
+type tokenManager interface {
+	AccessToken(ctx context.Context) (string, error)
+	Refresh(ctx context.Context) (string, error)
+}
+
+type whoopClient interface {
+	Recovery(ctx context.Context, accessToken string) (whoop.RecoveryCollection, error)
+}
+
+func NewApp(configDir string) *App {
+	return &App{
+		ConfigDir:    configDir,
+		TokenManager: &session.TokenManager{ConfigDir: configDir},
+		WhoopClient:  &whoop.Client{},
+	}
 }
 
 func Run(ctx context.Context, args []string, stdout io.Writer, stderr io.Writer) error {
-	app := &App{}
+	app := NewApp("")
 	return app.Run(ctx, args, stdout, stderr)
 }
 
@@ -38,6 +58,8 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 		return nil
 	case "auth":
 		return app.runAuth(ctx, args[1:], stdout)
+	case "recovery":
+		return app.runRecovery(ctx, stdout)
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
@@ -184,19 +206,40 @@ func (app *App) runAuthStatus(stdout io.Writer) error {
 }
 
 func (app *App) runAuthRefresh(ctx context.Context, stdout io.Writer) error {
-	refreshSession := app.RefreshSession
-	if refreshSession == nil {
-		refreshSession = func(ctx context.Context) error {
-			manager := &session.TokenManager{ConfigDir: app.ConfigDir}
-			_, err := manager.Refresh(ctx)
-			return err
-		}
-	}
-
-	if err := refreshSession(ctx); err != nil {
+	if _, err := app.tokenManager().Refresh(ctx); err != nil {
 		return err
 	}
 
 	fmt.Fprintln(stdout, "Token refreshed")
 	return nil
+}
+
+func (app *App) runRecovery(ctx context.Context, stdout io.Writer) error {
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	recovery, err := app.whoopClient().Recovery(ctx, token)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(recovery)
+}
+
+func (app *App) tokenManager() tokenManager {
+	if app.TokenManager != nil {
+		return app.TokenManager
+	}
+	return &session.TokenManager{ConfigDir: app.ConfigDir}
+}
+
+func (app *App) whoopClient() whoopClient {
+	if app.WhoopClient != nil {
+		return app.WhoopClient
+	}
+	return &whoop.Client{}
 }
