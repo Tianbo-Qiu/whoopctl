@@ -4,9 +4,9 @@
     <img src="docs/assets/logo.webp" alt="whoopctl logo" width="160">
 </p>
 
-![CLI](https://img.shields.io/badge/CLI-whoopctl-111111)
-![MCP](https://img.shields.io/badge/MCP-local%20stdio-4b5563)
-![WHOOP](https://img.shields.io/badge/WHOOP-OAuth%202.0-16a34a)
+![CLI](https://img.shields.io/badge/CLI-whoopctl-111827)
+![MCP](https://img.shields.io/badge/MCP-local%20stdio-10b981)
+![WHOOP](https://img.shields.io/badge/WHOOP-OAuth%202.0-6366f1)
 
 `whoopctl` is a CLI and local MCP server for working with your own WHOOP data. It stores credentials locally and calls the WHOOP API directly from your machine.
 
