@@ -31,6 +31,7 @@ type tokenManager interface {
 
 type whoopClient interface {
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
+	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)
 }
 
 func NewApp(configDir string) *App {
@@ -216,6 +217,10 @@ func (app *App) runAuthRefresh(ctx context.Context, stdout io.Writer) error {
 }
 
 func (app *App) runRecovery(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == "cycle" {
+		return app.runRecoveryForCycle(ctx, args[1:], stdout)
+	}
+
 	query, err := recoveryQuery(args)
 	if err != nil {
 		return err
@@ -227,6 +232,31 @@ func (app *App) runRecovery(ctx context.Context, args []string, stdout io.Writer
 	}
 
 	recovery, err := app.whoopClient().Recovery(ctx, token, query)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(recovery)
+}
+
+func (app *App) runRecoveryForCycle(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: whoopctl recovery cycle <cycle-id>")
+	}
+
+	cycleID, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || cycleID <= 0 {
+		return fmt.Errorf("cycle id must be a positive integer")
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	recovery, err := app.whoopClient().RecoveryForCycle(ctx, token, cycleID)
 	if err != nil {
 		return err
 	}

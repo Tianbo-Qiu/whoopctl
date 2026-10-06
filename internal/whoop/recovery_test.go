@@ -145,6 +145,109 @@ func TestRecoveryRequiresAccessToken(t *testing.T) {
 	}
 }
 
+func TestRecoveryForCycleSendsRequestAndDecodesResponse(t *testing.T) {
+	createdAt := "2022-04-24T11:25:44.774Z"
+	updatedAt := "2022-04-24T14:25:44.774Z"
+
+	client := &Client{
+		BaseURL: "https://example.test/developer/",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				if got, want := req.Method, http.MethodGet; got != want {
+					t.Fatalf("method = %q, want %q", got, want)
+				}
+				if got, want := req.URL.String(), "https://example.test/developer/v2/cycle/93845/recovery"; got != want {
+					t.Fatalf("url = %q, want %q", got, want)
+				}
+				if got, want := req.Header.Get("Authorization"), "Bearer access-token"; got != want {
+					t.Fatalf("Authorization = %q, want %q", got, want)
+				}
+
+				return jsonResponse(t, http.StatusOK, "200 OK", map[string]any{
+					"cycle_id":    93845,
+					"sleep_id":    "123e4567-e89b-12d3-a456-426614174000",
+					"user_id":     10129,
+					"created_at":  createdAt,
+					"updated_at":  updatedAt,
+					"score_state": "SCORED",
+					"score": map[string]any{
+						"user_calibrating":   false,
+						"recovery_score":     44,
+						"resting_heart_rate": 64,
+						"hrv_rmssd_milli":    31.813562,
+					},
+				}), nil
+			}),
+		},
+	}
+
+	recovery, err := client.RecoveryForCycle(context.Background(), " access-token ", 93845)
+	if err != nil {
+		t.Fatalf("RecoveryForCycle returned error: %v", err)
+	}
+
+	if got, want := recovery.CycleID, int64(93845); got != want {
+		t.Fatalf("CycleID = %d, want %d", got, want)
+	}
+	if got, want := recovery.SleepID, "123e4567-e89b-12d3-a456-426614174000"; got != want {
+		t.Fatalf("SleepID = %q, want %q", got, want)
+	}
+	if recovery.Score == nil {
+		t.Fatal("Score is nil")
+	}
+	if got, want := recovery.Score.HrvRmssdMilli, 31.813562; got != want {
+		t.Fatalf("HrvRmssdMilli = %f, want %f", got, want)
+	}
+}
+
+func TestRecoveryForCycleRequiresAccessToken(t *testing.T) {
+	client := &Client{}
+
+	_, err := client.RecoveryForCycle(context.Background(), "", 93845)
+	if err == nil {
+		t.Fatal("RecoveryForCycle returned nil error")
+	}
+	if got, want := err.Error(), "access token is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestRecoveryForCycleRequiresCycleID(t *testing.T) {
+	client := &Client{}
+
+	_, err := client.RecoveryForCycle(context.Background(), "access-token", 0)
+	if err == nil {
+		t.Fatal("RecoveryForCycle returned nil error")
+	}
+	if got, want := err.Error(), "cycle id is required"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestRecoveryForCycleReturnsAPIErrorForNon2xx(t *testing.T) {
+	client := &Client{
+		BaseURL: "https://example.test/developer",
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				return jsonResponse(t, http.StatusNotFound, "404 Not Found", map[string]any{}), nil
+			}),
+		},
+	}
+
+	_, err := client.RecoveryForCycle(context.Background(), "access-token", 93845)
+	if err == nil {
+		t.Fatal("RecoveryForCycle returned nil error")
+	}
+
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error = %v, want *APIError", err)
+	}
+	if got, want := apiErr.StatusCode, http.StatusNotFound; got != want {
+		t.Fatalf("StatusCode = %d, want %d", got, want)
+	}
+}
+
 func TestRecoveryReturnsAPIErrorForNon2xx(t *testing.T) {
 	client := &Client{
 		BaseURL: "https://example.test/developer",

@@ -92,3 +92,37 @@ func (c *Client) Recovery(ctx context.Context, accessToken string, query Recover
 
 	return recovery, nil
 }
+
+func (c *Client) RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (Recovery, error) {
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken == "" {
+		return Recovery{}, fmt.Errorf("access token is required")
+	}
+	if cycleID <= 0 {
+		return Recovery{}, fmt.Errorf("cycle id is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint(fmt.Sprintf("/v2/cycle/%d/recovery", cycleID)), nil)
+	if err != nil {
+		return Recovery{}, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := c.do(req)
+	if err != nil {
+		return Recovery{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return Recovery{}, apiError(resp)
+	}
+
+	var recovery Recovery
+	if err := json.NewDecoder(resp.Body).Decode(&recovery); err != nil {
+		return Recovery{}, err
+	}
+
+	return recovery, nil
+}

@@ -93,6 +93,95 @@ func TestGetRecovery(t *testing.T) {
 	}
 }
 
+func TestGetRecoveryForCycle(t *testing.T) {
+	start := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
+	end := time.Date(2026, 1, 3, 3, 4, 5, 987654321, time.UTC)
+	spo2Percentage := 95.6875
+
+	service := &WhoopService{
+		TokenManager: fakeTokenManager{accessToken: "access-token"},
+		WhoopClient: fakeWhoopClient{
+			t:               t,
+			wantAccessToken: "access-token",
+			wantCycleID:     93845,
+			recoveryForCycle: whoop.Recovery{
+				CycleID:    93845,
+				SleepID:    "123e4567-e89b-12d3-a456-426614174000",
+				UserID:     10129,
+				CreatedAt:  start,
+				UpdatedAt:  end,
+				ScoreState: "SCORED",
+				Score: &whoop.RecoveryScore{
+					UserCalibrating:  false,
+					RecoveryScore:    44,
+					RestingHeartRate: 64,
+					HrvRmssdMilli:    31.813562,
+					Spo2Percentage:   &spo2Percentage,
+				},
+			},
+		},
+	}
+
+	result, output, err := service.getRecoveryForCycle(context.Background(), nil, GetRecoveryForCycleInput{
+		CycleID: 93845,
+	})
+	if err != nil {
+		t.Fatalf("getRecoveryForCycle returned error: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("result = %#v, want nil", result)
+	}
+	if got, want := output.CycleID, int64(93845); got != want {
+		t.Fatalf("CycleID = %d, want %d", got, want)
+	}
+	if got, want := output.CreatedAt, start.Format(time.RFC3339Nano); got != want {
+		t.Fatalf("CreatedAt = %q, want %q", got, want)
+	}
+	if output.Score == nil {
+		t.Fatal("Score is nil")
+	}
+	if output.Score.Spo2Percentage == nil {
+		t.Fatal("Spo2Percentage is nil")
+	}
+	if got, want := *output.Score.Spo2Percentage, spo2Percentage; got != want {
+		t.Fatalf("Spo2Percentage = %f, want %f", got, want)
+	}
+}
+
+func TestGetRecoveryForCycleReturnsAccessTokenError(t *testing.T) {
+	service := &WhoopService{
+		TokenManager: fakeTokenManager{accessTokenErr: fmt.Errorf("access token failed")},
+		WhoopClient:  fakeWhoopClient{},
+	}
+
+	_, _, err := service.getRecoveryForCycle(context.Background(), nil, GetRecoveryForCycleInput{
+		CycleID: 93845,
+	})
+	if err == nil {
+		t.Fatal("getRecoveryForCycle returned nil error")
+	}
+	if got, want := err.Error(), "access token failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestGetRecoveryForCycleReturnsWhoopError(t *testing.T) {
+	service := &WhoopService{
+		TokenManager: fakeTokenManager{accessToken: "access-token"},
+		WhoopClient:  fakeWhoopClient{recoveryForCycleErr: fmt.Errorf("recovery for cycle failed")},
+	}
+
+	_, _, err := service.getRecoveryForCycle(context.Background(), nil, GetRecoveryForCycleInput{
+		CycleID: 93845,
+	})
+	if err == nil {
+		t.Fatal("getRecoveryForCycle returned nil error")
+	}
+	if got, want := err.Error(), "recovery for cycle failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 func TestGetRecoveryReturnsAccessTokenError(t *testing.T) {
 	service := &WhoopService{
 		TokenManager: fakeTokenManager{accessTokenErr: fmt.Errorf("access token failed")},
@@ -150,11 +239,14 @@ func (f fakeTokenManager) AccessToken(ctx context.Context) (string, error) {
 }
 
 type fakeWhoopClient struct {
-	t               *testing.T
-	wantAccessToken string
-	wantQuery       whoop.RecoveryQuery
-	recovery        whoop.RecoveryCollection
-	recoveryErr     error
+	t                   *testing.T
+	wantAccessToken     string
+	wantQuery           whoop.RecoveryQuery
+	wantCycleID         int64
+	recovery            whoop.RecoveryCollection
+	recoveryErr         error
+	recoveryForCycle    whoop.Recovery
+	recoveryForCycleErr error
 }
 
 func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error) {
@@ -171,4 +263,20 @@ func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query
 		return whoop.RecoveryCollection{}, f.recoveryErr
 	}
 	return f.recovery, nil
+}
+
+func (f fakeWhoopClient) RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantCycleID != 0 && cycleID != f.wantCycleID {
+		f.t.Fatalf("cycleID = %d, want %d", cycleID, f.wantCycleID)
+	}
+	if f.recoveryForCycleErr != nil {
+		return whoop.Recovery{}, f.recoveryForCycleErr
+	}
+	return f.recoveryForCycle, nil
 }

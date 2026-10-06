@@ -14,6 +14,7 @@ type tokenManager interface {
 
 type whoopClient interface {
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
+	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)
 }
 
 type WhoopService struct {

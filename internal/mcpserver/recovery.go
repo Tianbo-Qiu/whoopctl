@@ -20,6 +20,10 @@ type GetRecoveryOutput struct {
 	NextToken string           `json:"next_token,omitempty" jsonschema:"Pagination token for fetching the next page, if available."`
 }
 
+type GetRecoveryForCycleInput struct {
+	CycleID int64 `json:"cycle_id" jsonschema:"WHOOP physiological cycle ID."`
+}
+
 type RecoveryRecord struct {
 	CycleID    int64          `json:"cycle_id" jsonschema:"WHOOP physiological cycle ID associated with this recovery record."`
 	SleepID    string         `json:"sleep_id" jsonschema:"WHOOP sleep ID associated with this recovery record."`
@@ -46,6 +50,11 @@ func registerRecoveryTool(server *mcp.Server, service *WhoopService) {
 			"Supports optional limit, start, end, and next_token pagination inputs. " +
 			"Returns recovery score measurements including resting heart rate in beats per minute, HRV RMSSD in milliseconds, optional SpO2 percentage, and optional skin temperature in Celsius.",
 	}, service.getRecovery)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_recovery_for_cycle",
+		Description: "Fetch the WHOOP recovery record for a specific physiological cycle ID.",
+	}, service.getRecoveryForCycle)
 }
 
 func (s *WhoopService) getRecovery(ctx context.Context, req *mcp.CallToolRequest, input GetRecoveryInput) (*mcp.CallToolResult, GetRecoveryOutput, error) {
@@ -65,6 +74,20 @@ func (s *WhoopService) getRecovery(ctx context.Context, req *mcp.CallToolRequest
 	}
 
 	return nil, recoveryOutput(recovery), nil
+}
+
+func (s *WhoopService) getRecoveryForCycle(ctx context.Context, req *mcp.CallToolRequest, input GetRecoveryForCycleInput) (*mcp.CallToolResult, RecoveryRecord, error) {
+	accessToken, err := s.TokenManager.AccessToken(ctx)
+	if err != nil {
+		return nil, RecoveryRecord{}, err
+	}
+
+	recovery, err := s.WhoopClient.RecoveryForCycle(ctx, accessToken, input.CycleID)
+	if err != nil {
+		return nil, RecoveryRecord{}, err
+	}
+
+	return nil, recoveryRecord(recovery), nil
 }
 
 func recoveryQuery(input GetRecoveryInput) (whoop.RecoveryQuery, error) {
@@ -99,27 +122,31 @@ func recoveryOutput(collection whoop.RecoveryCollection) GetRecoveryOutput {
 	}
 
 	for _, record := range collection.Records {
-		item := RecoveryRecord{
-			CycleID:    record.CycleID,
-			SleepID:    record.SleepID,
-			UserID:     record.UserID,
-			CreatedAt:  record.CreatedAt.Format(time.RFC3339Nano),
-			UpdatedAt:  record.UpdatedAt.Format(time.RFC3339Nano),
-			ScoreState: record.ScoreState,
-		}
+		out.Records = append(out.Records, recoveryRecord(record))
+	}
 
-		if record.Score != nil {
-			item.Score = &RecoveryScore{
-				UserCalibrating:  record.Score.UserCalibrating,
-				RecoveryScore:    record.Score.RecoveryScore,
-				RestingHeartRate: record.Score.RestingHeartRate,
-				HrvRmssdMilli:    record.Score.HrvRmssdMilli,
-				Spo2Percentage:   record.Score.Spo2Percentage,
-				SkinTempCelsius:  record.Score.SkinTempCelsius,
-			}
-		}
+	return out
+}
 
-		out.Records = append(out.Records, item)
+func recoveryRecord(record whoop.Recovery) RecoveryRecord {
+	out := RecoveryRecord{
+		CycleID:    record.CycleID,
+		SleepID:    record.SleepID,
+		UserID:     record.UserID,
+		CreatedAt:  record.CreatedAt.Format(time.RFC3339Nano),
+		UpdatedAt:  record.UpdatedAt.Format(time.RFC3339Nano),
+		ScoreState: record.ScoreState,
+	}
+
+	if record.Score != nil {
+		out.Score = &RecoveryScore{
+			UserCalibrating:  record.Score.UserCalibrating,
+			RecoveryScore:    record.Score.RecoveryScore,
+			RestingHeartRate: record.Score.RestingHeartRate,
+			HrvRmssdMilli:    record.Score.HrvRmssdMilli,
+			Spo2Percentage:   record.Score.Spo2Percentage,
+			SkinTempCelsius:  record.Score.SkinTempCelsius,
+		}
 	}
 
 	return out

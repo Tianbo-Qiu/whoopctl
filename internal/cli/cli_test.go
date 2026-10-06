@@ -155,6 +155,137 @@ func TestRunRecoveryPassesQuery(t *testing.T) {
 	}
 }
 
+func TestRunRecoveryForCyclePrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
+	updatedAt := time.Date(2022, 4, 24, 14, 25, 44, 774000000, time.UTC)
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantCycleID:     93845,
+		recoveryForCycle: whoop.Recovery{
+			CycleID:    93845,
+			SleepID:    "123e4567-e89b-12d3-a456-426614174000",
+			UserID:     10129,
+			CreatedAt:  createdAt,
+			UpdatedAt:  updatedAt,
+			ScoreState: "SCORED",
+			Score: &whoop.RecoveryScore{
+				UserCalibrating:  false,
+				RecoveryScore:    44,
+				RestingHeartRate: 64,
+				HrvRmssdMilli:    31.813562,
+			},
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"recovery", "cycle", "93845"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := `{
+  "cycle_id": 93845,
+  "sleep_id": "123e4567-e89b-12d3-a456-426614174000",
+  "user_id": 10129,
+  "created_at": "2022-04-24T11:25:44.774Z",
+  "updated_at": "2022-04-24T14:25:44.774Z",
+  "score_state": "SCORED",
+  "score": {
+    "user_calibrating": false,
+    "recovery_score": 44,
+    "resting_heart_rate": 64,
+    "hrv_rmssd_milli": 31.813562
+  }
+}
+`
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if got := stderr.String(); got != "" {
+		t.Fatalf("stderr = %q, want empty", got)
+	}
+}
+
+func TestRunRecoveryForCycleRejectsInvalidArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing cycle id",
+			args:    []string{"recovery", "cycle"},
+			wantErr: "usage: whoopctl recovery cycle <cycle-id>",
+		},
+		{
+			name:    "extra arg",
+			args:    []string{"recovery", "cycle", "93845", "extra"},
+			wantErr: "usage: whoopctl recovery cycle <cycle-id>",
+		},
+		{
+			name:    "not integer",
+			args:    []string{"recovery", "cycle", "nope"},
+			wantErr: "cycle id must be a positive integer",
+		},
+		{
+			name:    "zero",
+			args:    []string{"recovery", "cycle", "0"},
+			wantErr: "cycle id must be a positive integer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			accessTokenCalled := false
+
+			app := NewApp(t.TempDir())
+			app.TokenManager = fakeTokenManager{
+				onAccessToken: func() {
+					accessTokenCalled = true
+				},
+			}
+
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if accessTokenCalled {
+				t.Fatal("AccessToken was called")
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
+	}
+}
+
+func TestRunRecoveryForCycleReturnsRecoveryError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{recoveryForCycleErr: fmt.Errorf("recovery for cycle failed")}
+
+	err := app.Run(context.Background(), []string{"recovery", "cycle", "93845"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "recovery for cycle failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want empty", got)
+	}
+}
+
 func TestRunRecoveryRejectsInvalidLimit(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -608,11 +739,14 @@ func (f fakeTokenManager) Refresh(ctx context.Context) (string, error) {
 }
 
 type fakeWhoopClient struct {
-	t               *testing.T
-	wantAccessToken string
-	wantQuery       whoop.RecoveryQuery
-	recovery        whoop.RecoveryCollection
-	recoveryErr     error
+	t                   *testing.T
+	wantAccessToken     string
+	wantQuery           whoop.RecoveryQuery
+	wantCycleID         int64
+	recovery            whoop.RecoveryCollection
+	recoveryErr         error
+	recoveryForCycle    whoop.Recovery
+	recoveryForCycleErr error
 }
 
 func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error) {
@@ -629,4 +763,20 @@ func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query
 		return whoop.RecoveryCollection{}, f.recoveryErr
 	}
 	return f.recovery, nil
+}
+
+func (f fakeWhoopClient) RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantCycleID != 0 && cycleID != f.wantCycleID {
+		f.t.Fatalf("cycleID = %d, want %d", cycleID, f.wantCycleID)
+	}
+	if f.recoveryForCycleErr != nil {
+		return whoop.Recovery{}, f.recoveryForCycleErr
+	}
+	return f.recoveryForCycle, nil
 }
