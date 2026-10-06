@@ -244,12 +244,30 @@ type fakeWhoopClient struct {
 	wantCycleQuery      whoop.CycleQuery
 	wantQuery           whoop.RecoveryQuery
 	wantCycleID         int64
+	cycle               whoop.Cycle
+	cycleErr            error
 	cycles              whoop.CycleCollection
 	cyclesErr           error
 	recovery            whoop.RecoveryCollection
 	recoveryErr         error
 	recoveryForCycle    whoop.Recovery
 	recoveryForCycleErr error
+}
+
+func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantCycleID != 0 && cycleID != f.wantCycleID {
+		f.t.Fatalf("cycleID = %d, want %d", cycleID, f.wantCycleID)
+	}
+	if f.cycleErr != nil {
+		return whoop.Cycle{}, f.cycleErr
+	}
+	return f.cycle, nil
 }
 
 func (f fakeWhoopClient) Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error) {

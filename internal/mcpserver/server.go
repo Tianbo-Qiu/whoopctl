@@ -13,6 +13,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
+	Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error)
 	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
 	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)

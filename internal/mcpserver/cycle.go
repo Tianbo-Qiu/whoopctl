@@ -20,6 +20,10 @@ type GetCycleOutput struct {
 	NextToken string        `json:"next_token,omitempty" jsonschema:"Pagination token for fetching the next page, if available."`
 }
 
+type GetCycleByIDInput struct {
+	CycleID int64 `json:"cycle_id" jsonschema:"WHOOP physiological cycle ID."`
+}
+
 type CycleRecord struct {
 	ID             int64       `json:"id" jsonschema:"WHOOP physiological cycle ID."`
 	UserID         int64       `json:"user_id" jsonschema:"WHOOP user ID."`
@@ -47,6 +51,11 @@ func registerCycleTool(server *mcp.Server, service *WhoopService) {
 			"Supports optional limit, start, end, and next_token pagination inputs. " +
 			"Returns cycle timing, score state, optional strain score, heart-rate summary, kilojoules, and optional step count.",
 	}, service.getCycle)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_cycle_by_id",
+		Description: "Fetch a single WHOOP physiological cycle by cycle ID.",
+	}, service.getCycleByID)
 }
 
 func (s *WhoopService) getCycle(ctx context.Context, req *mcp.CallToolRequest, input GetCycleInput) (*mcp.CallToolResult, GetCycleOutput, error) {
@@ -66,6 +75,20 @@ func (s *WhoopService) getCycle(ctx context.Context, req *mcp.CallToolRequest, i
 	}
 
 	return nil, cycleOutput(cycles), nil
+}
+
+func (s *WhoopService) getCycleByID(ctx context.Context, req *mcp.CallToolRequest, input GetCycleByIDInput) (*mcp.CallToolResult, CycleRecord, error) {
+	accessToken, err := s.TokenManager.AccessToken(ctx)
+	if err != nil {
+		return nil, CycleRecord{}, err
+	}
+
+	cycle, err := s.WhoopClient.Cycle(ctx, accessToken, input.CycleID)
+	if err != nil {
+		return nil, CycleRecord{}, err
+	}
+
+	return nil, cycleRecord(cycle), nil
 }
 
 func cycleQuery(input GetCycleInput) (whoop.CycleQuery, error) {

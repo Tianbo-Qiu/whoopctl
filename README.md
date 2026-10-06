@@ -10,6 +10,24 @@
 
 `whoopctl` is a CLI and local MCP server for working with your own WHOOP data. It stores credentials locally and calls the WHOOP API directly from your machine.
 
+## Install
+
+Build the CLI and MCP server binaries from the repo:
+
+```sh
+go build -o ./bin/whoopctl ./cmd/whoopctl
+go build -o ./bin/whoopctl-mcp ./cmd/whoopctl-mcp
+```
+
+You can also install them into your Go binary directory:
+
+```sh
+go install ./cmd/whoopctl
+go install ./cmd/whoopctl-mcp
+```
+
+Make sure your Go binary directory is on your `PATH` if you use `go install`.
+
 ## Setup
 
 `whoopctl` uses WHOOP's OAuth 2.0 authorization code flow. You bring your own WHOOP Developer app credentials, log in with your WHOOP account, approve scopes, and `whoopctl` stores user access tokens locally.
@@ -82,6 +100,46 @@ And manually refresh the access token with:
 whoopctl auth refresh
 ```
 
+## CLI examples
+
+| Roadmap item | Command |
+| --- | --- |
+| Recovery collection | `whoopctl recovery --limit 1` |
+| Recovery by cycle | `whoopctl recovery cycle CYCLE_ID` |
+| Cycle collection | `whoopctl cycle --limit 1` |
+| Cycle by ID | `whoopctl cycle get CYCLE_ID` |
+
+Paginated collection commands accept the same filtering flags:
+
+```sh
+whoopctl cycle \
+  --limit 25 \
+  --start START_RFC3339 \
+  --end END_RFC3339
+```
+
+If a response includes `next_token`, pass it to fetch the next page:
+
+```sh
+whoopctl recovery --next-token NEXT_TOKEN
+```
+
+## MCP server
+
+`whoopctl-mcp` runs a local stdio MCP server. Configure your MCP client to launch the binary:
+
+```json
+{
+  "mcpServers": {
+    "whoopctl": {
+      "command": "/path/to/whoopctl-mcp"
+    }
+  }
+}
+```
+
+After connecting, the server exposes tools for supported WHOOP endpoints, including `get_recovery`, `get_recovery_for_cycle`, `get_cycle`, and `get_cycle_by_id`.
+
 ## Roadmap
 
 This roadmap tracks the standard WHOOP OAuth API surface for a personal `whoopctl` app.
@@ -102,7 +160,7 @@ Auth is handled by the CLI and shared by the local MCP server through the same l
 | Recovery collection | ✅ | ✅ |
 | Recovery by cycle | ✅ | ✅ |
 | Cycle collection | ✅ | ✅ |
-| Cycle by ID |  |  |
+| Cycle by ID | ✅ | ✅ |
 | Sleep collection |  |  |
 | Sleep by ID |  |  |
 | Sleep by cycle |  |  |

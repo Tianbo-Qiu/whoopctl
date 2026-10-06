@@ -93,3 +93,37 @@ func (c *Client) Cycles(ctx context.Context, accessToken string, query CycleQuer
 
 	return cycles, nil
 }
+
+func (c *Client) Cycle(ctx context.Context, accessToken string, cycleID int64) (Cycle, error) {
+	accessToken = strings.TrimSpace(accessToken)
+	if accessToken == "" {
+		return Cycle{}, fmt.Errorf("access token is required")
+	}
+	if cycleID <= 0 {
+		return Cycle{}, fmt.Errorf("cycle id is required")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint(fmt.Sprintf("/v2/cycle/%d", cycleID)), nil)
+	if err != nil {
+		return Cycle{}, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+
+	resp, err := c.do(req)
+	if err != nil {
+		return Cycle{}, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return Cycle{}, apiError(resp)
+	}
+
+	var cycle Cycle
+	if err := json.NewDecoder(resp.Body).Decode(&cycle); err != nil {
+		return Cycle{}, err
+	}
+
+	return cycle, nil
+}

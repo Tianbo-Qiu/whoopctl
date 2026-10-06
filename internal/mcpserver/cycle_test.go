@@ -90,6 +90,81 @@ func TestGetCycle(t *testing.T) {
 	}
 }
 
+func TestGetCycleByID(t *testing.T) {
+	start := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
+
+	service := &WhoopService{
+		TokenManager: fakeTokenManager{accessToken: "access-token"},
+		WhoopClient: fakeWhoopClient{
+			t:               t,
+			wantAccessToken: "access-token",
+			wantCycleID:     93845,
+			cycle: whoop.Cycle{
+				ID:             93845,
+				UserID:         10129,
+				CreatedAt:      start,
+				UpdatedAt:      start,
+				Start:          start,
+				TimezoneOffset: "-05:00",
+				ScoreState:     "PENDING_SCORE",
+			},
+		},
+	}
+
+	result, output, err := service.getCycleByID(context.Background(), nil, GetCycleByIDInput{
+		CycleID: 93845,
+	})
+	if err != nil {
+		t.Fatalf("getCycleByID returned error: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("result = %#v, want nil", result)
+	}
+	if got, want := output.ID, int64(93845); got != want {
+		t.Fatalf("ID = %d, want %d", got, want)
+	}
+	if got, want := output.ScoreState, "PENDING_SCORE"; got != want {
+		t.Fatalf("ScoreState = %q, want %q", got, want)
+	}
+	if got := output.End; got != "" {
+		t.Fatalf("End = %q, want empty", got)
+	}
+}
+
+func TestGetCycleByIDReturnsAccessTokenError(t *testing.T) {
+	service := &WhoopService{
+		TokenManager: fakeTokenManager{accessTokenErr: fmt.Errorf("access token failed")},
+		WhoopClient:  fakeWhoopClient{},
+	}
+
+	_, _, err := service.getCycleByID(context.Background(), nil, GetCycleByIDInput{
+		CycleID: 93845,
+	})
+	if err == nil {
+		t.Fatal("getCycleByID returned nil error")
+	}
+	if got, want := err.Error(), "access token failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestGetCycleByIDReturnsWhoopError(t *testing.T) {
+	service := &WhoopService{
+		TokenManager: fakeTokenManager{accessToken: "access-token"},
+		WhoopClient:  fakeWhoopClient{cycleErr: fmt.Errorf("cycle failed")},
+	}
+
+	_, _, err := service.getCycleByID(context.Background(), nil, GetCycleByIDInput{
+		CycleID: 93845,
+	})
+	if err == nil {
+		t.Fatal("getCycleByID returned nil error")
+	}
+	if got, want := err.Error(), "cycle failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 func TestGetCycleReturnsAccessTokenError(t *testing.T) {
 	service := &WhoopService{
 		TokenManager: fakeTokenManager{accessTokenErr: fmt.Errorf("access token failed")},
