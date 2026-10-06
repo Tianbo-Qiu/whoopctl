@@ -31,6 +31,7 @@ type tokenManager interface {
 
 type whoopClient interface {
 	BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error)
+	BodyMeasurement(ctx context.Context, accessToken string) (whoop.BodyMeasurement, error)
 	Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error)
 	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
@@ -68,6 +69,8 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 		return nil
 	case "auth":
 		return app.runAuth(ctx, args[1:], stdout)
+	case "body":
+		return app.runBody(ctx, args[1:], stdout)
 	case "cycle":
 		return app.runCycle(ctx, args[1:], stdout)
 	case "profile":
@@ -81,6 +84,26 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (app *App) runBody(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: whoopctl body")
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	measurement, err := app.whoopClient().BodyMeasurement(ctx, token)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(measurement)
 }
 
 func (app *App) runProfile(ctx context.Context, args []string, stdout io.Writer) error {

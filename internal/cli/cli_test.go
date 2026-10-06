@@ -138,6 +138,53 @@ func TestRunProfileRejectsInvalidArgs(t *testing.T) {
 	}
 }
 
+func TestRunBodyPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		body: whoop.BodyMeasurement{
+			HeightMeter:    1.8288,
+			WeightKilogram: 90.7185,
+			MaxHeartRate:   200,
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"body"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := `{
+  "height_meter": 1.8288,
+  "weight_kilogram": 90.7185,
+  "max_heart_rate": 200
+}
+`
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunBodyRejectsInvalidArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	err := app.Run(context.Background(), []string{"body", "extra"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "usage: whoopctl body"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want empty", got)
+	}
+}
+
 func TestRunCyclePrintsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
@@ -1326,6 +1373,8 @@ type fakeWhoopClient struct {
 	wantAccessToken     string
 	profile             whoop.BasicProfile
 	profileErr          error
+	body                whoop.BodyMeasurement
+	bodyErr             error
 	wantCycleQuery      whoop.CycleQuery
 	wantQuery           whoop.RecoveryQuery
 	wantCycleID         int64
@@ -1362,6 +1411,19 @@ func (f fakeWhoopClient) BasicProfile(ctx context.Context, accessToken string) (
 		return whoop.BasicProfile{}, f.profileErr
 	}
 	return f.profile, nil
+}
+
+func (f fakeWhoopClient) BodyMeasurement(ctx context.Context, accessToken string) (whoop.BodyMeasurement, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.bodyErr != nil {
+		return whoop.BodyMeasurement{}, f.bodyErr
+	}
+	return f.body, nil
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {

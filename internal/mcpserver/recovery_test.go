@@ -243,6 +243,8 @@ type fakeWhoopClient struct {
 	wantAccessToken     string
 	profile             whoop.BasicProfile
 	profileErr          error
+	body                whoop.BodyMeasurement
+	bodyErr             error
 	wantCycleQuery      whoop.CycleQuery
 	wantQuery           whoop.RecoveryQuery
 	wantCycleID         int64
@@ -279,6 +281,19 @@ func (f fakeWhoopClient) BasicProfile(ctx context.Context, accessToken string) (
 		return whoop.BasicProfile{}, f.profileErr
 	}
 	return f.profile, nil
+}
+
+func (f fakeWhoopClient) BodyMeasurement(ctx context.Context, accessToken string) (whoop.BodyMeasurement, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.bodyErr != nil {
+		return whoop.BodyMeasurement{}, f.bodyErr
+	}
+	return f.body, nil
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
