@@ -12,6 +12,7 @@ import (
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
 	"github.com/Tianbo-Qiu/whoopctl/internal/session"
+	"github.com/Tianbo-Qiu/whoopctl/internal/version"
 	"github.com/Tianbo-Qiu/whoopctl/internal/whoop"
 )
 
@@ -68,7 +69,7 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 
 	switch args[0] {
 	case "version":
-		fmt.Fprintln(stdout, "whoopctl dev")
+		fmt.Fprintln(stdout, "whoopctl "+version.String())
 		return nil
 	case "activity":
 		return app.runActivity(ctx, args[1:], stdout)

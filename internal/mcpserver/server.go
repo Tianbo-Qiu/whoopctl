@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/session"
+	"github.com/Tianbo-Qiu/whoopctl/internal/version"
 	"github.com/Tianbo-Qiu/whoopctl/internal/whoop"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -46,7 +47,7 @@ func New(configDir string) *mcp.Server {
 func NewWithService(service *WhoopService) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "whoopctl",
-		Version: "dev",
+		Version: version.String(),
 	}, nil)
 
 	registerActivityTool(server, service)

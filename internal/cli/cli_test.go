@@ -10,6 +10,7 @@ import (
 
 	"github.com/Tianbo-Qiu/whoopctl/internal/auth"
 	"github.com/Tianbo-Qiu/whoopctl/internal/config"
+	"github.com/Tianbo-Qiu/whoopctl/internal/version"
 	"github.com/Tianbo-Qiu/whoopctl/internal/whoop"
 )
 
@@ -20,7 +21,7 @@ func TestRunVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run returned error: %v", err)
 	}
-	if got, want := stdout.String(), "whoopctl dev\n"; got != want {
+	if got, want := stdout.String(), "whoopctl "+version.String()+"\n"; got != want {
 		t.Fatalf("stdout = %q, want %q", got, want)
 	}
 	if got := stderr.String(); got != "" {

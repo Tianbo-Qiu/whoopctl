@@ -26,7 +26,24 @@ go install ./cmd/whoopctl
 go install ./cmd/whoopctl-mcp
 ```
 
+Or install a released version without cloning the repo:
+
+```sh
+go install github.com/Tianbo-Qiu/whoopctl/cmd/whoopctl@latest
+go install github.com/Tianbo-Qiu/whoopctl/cmd/whoopctl-mcp@latest
+```
+
+Replace `@latest` with a tag such as `@v0.1.0` to pin a specific release.
+
 Make sure your Go binary directory is on your `PATH` if you use `go install`.
+
+Check which version you have with:
+
+```sh
+whoopctl version
+```
+
+Installs from a tagged release report that tag, such as `v0.1.0`. Builds from an untagged commit report a Go pseudo-version based on the commit, and builds without version information report `dev`. To set the version explicitly at build time, pass `-ldflags "-X github.com/Tianbo-Qiu/whoopctl/internal/version.Version=v0.1.0"` to `go build`.
 
 ## Setup
 
