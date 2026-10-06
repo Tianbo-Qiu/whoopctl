@@ -292,3 +292,25 @@ func jsonResponse(t *testing.T, statusCode int, status string, body map[string]a
 		Body:       io.NopCloser(bytes.NewReader(data)),
 	}
 }
+
+func TestTokenManagerClearTokenRemovesStoredToken(t *testing.T) {
+	dir := t.TempDir()
+
+	saveCredentialsAndToken(t, dir, config.StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Date(2026, 9, 27, 13, 0, 0, 0, time.UTC),
+		Scope:        "offline read:recovery",
+		TokenType:    "bearer",
+	})
+
+	manager := &TokenManager{ConfigDir: dir}
+	if err := manager.ClearToken(context.Background()); err != nil {
+		t.Fatalf("ClearToken returned error: %v", err)
+	}
+
+	_, err := manager.AccessToken(context.Background())
+	if !errors.Is(err, ErrLoginRequired) {
+		t.Fatalf("AccessToken error = %v, want ErrLoginRequired", err)
+	}
+}

@@ -66,6 +66,10 @@ func (m *TokenManager) Refresh(ctx context.Context) (string, error) {
 	return m.refresh(ctx, creds, token, now())
 }
 
+func (m *TokenManager) ClearToken(ctx context.Context) error {
+	return config.DeleteToken(m.ConfigDir)
+}
+
 func (m *TokenManager) refresh(ctx context.Context, creds config.Credentials, token config.StoredToken, now time.Time) (string, error) {
 	client := m.Client
 	if client == nil {

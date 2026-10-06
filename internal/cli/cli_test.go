@@ -1212,6 +1212,94 @@ func TestRunAuthRefreshReturnsError(t *testing.T) {
 	}
 }
 
+func TestRunAuthRevoke(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	var calls []string
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{
+		accessToken: "access-token",
+		onClearToken: func() {
+			calls = append(calls, "clear")
+		},
+	}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		onRevoke: func() {
+			calls = append(calls, "revoke")
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"auth", "revoke"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	if got, want := strings.Join(calls, ","), "revoke,clear"; got != want {
+		t.Fatalf("calls = %q, want %q", got, want)
+	}
+	if got, want := stdout.String(), "Access revoked\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunAuthRevokeKeepsTokenWhenRevokeFails(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	cleared := false
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{
+		accessToken: "access-token",
+		onClearToken: func() {
+			cleared = true
+		},
+	}
+	app.WhoopClient = fakeWhoopClient{revokeErr: fmt.Errorf("revoke failed")}
+
+	err := app.Run(context.Background(), []string{"auth", "revoke"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "revoke failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if cleared {
+		t.Fatal("ClearToken was called after revoke failed")
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want empty", got)
+	}
+}
+
+func TestRunAuthRevokeReturnsAccessTokenError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessTokenErr: fmt.Errorf("access token failed")}
+
+	err := app.Run(context.Background(), []string{"auth", "revoke"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "access token failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestRunAuthRevokeRejectsInvalidArgs(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	err := app.Run(context.Background(), []string{"auth", "revoke", "extra"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "usage: whoopctl auth revoke"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
 func TestRunAuthLoginPrintsAuthorizeURL(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	dir := t.TempDir()
@@ -1346,6 +1434,15 @@ type fakeTokenManager struct {
 	refreshErr     error
 	onAccessToken  func()
 	onRefresh      func()
+	clearErr       error
+	onClearToken   func()
+}
+
+func (f fakeTokenManager) ClearToken(ctx context.Context) error {
+	if f.onClearToken != nil {
+		f.onClearToken()
+	}
+	return f.clearErr
 }
 
 func (f fakeTokenManager) AccessToken(ctx context.Context) (string, error) {
@@ -1386,6 +1483,8 @@ type fakeWhoopClient struct {
 	recoveryErr         error
 	recoveryForCycle    whoop.Recovery
 	recoveryForCycleErr error
+	revokeErr           error
+	onRevoke            func()
 	sleep               whoop.Sleep
 	sleepErr            error
 	sleepForCycle       whoop.Sleep
@@ -1472,6 +1571,19 @@ func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query
 		return whoop.RecoveryCollection{}, f.recoveryErr
 	}
 	return f.recovery, nil
+}
+
+func (f fakeWhoopClient) RevokeAccess(ctx context.Context, accessToken string) error {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.onRevoke != nil {
+		f.onRevoke()
+	}
+	return f.revokeErr
 }
 
 func (f fakeWhoopClient) RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error) {

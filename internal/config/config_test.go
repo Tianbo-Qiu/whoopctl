@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -338,5 +339,33 @@ func TestSaveTokenRequiresBearerTokenType(t *testing.T) {
 	}
 	if got, want := err.Error(), "unsupported token type: mac"; got != want {
 		t.Fatalf("error = %q, want %q", got, want)
+	}
+}
+
+func TestDeleteTokenRemovesTokenFile(t *testing.T) {
+	dir := t.TempDir()
+
+	err := SaveToken(dir, StoredToken{
+		AccessToken:  "access-token",
+		RefreshToken: "refresh-token",
+		ExpiresAt:    time.Date(2026, 9, 27, 12, 0, 0, 0, time.UTC),
+		TokenType:    "bearer",
+	})
+	if err != nil {
+		t.Fatalf("SaveToken returned error: %v", err)
+	}
+
+	if err := DeleteToken(dir); err != nil {
+		t.Fatalf("DeleteToken returned error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "token.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat error = %v, want os.ErrNotExist", err)
+	}
+}
+
+func TestDeleteTokenIgnoresMissingFile(t *testing.T) {
+	if err := DeleteToken(t.TempDir()); err != nil {
+		t.Fatalf("DeleteToken returned error: %v", err)
 	}
 }

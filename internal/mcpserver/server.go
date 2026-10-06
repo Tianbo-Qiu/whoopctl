@@ -10,6 +10,7 @@ import (
 
 type tokenManager interface {
 	AccessToken(ctx context.Context) (string, error)
+	ClearToken(ctx context.Context) error
 }
 
 type whoopClient interface {
@@ -19,6 +20,7 @@ type whoopClient interface {
 	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
 	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)
+	RevokeAccess(ctx context.Context, accessToken string) error
 	Sleep(ctx context.Context, accessToken string, sleepID string) (whoop.Sleep, error)
 	SleepForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Sleep, error)
 	Sleeps(ctx context.Context, accessToken string, query whoop.SleepQuery) (whoop.SleepCollection, error)
@@ -50,6 +52,7 @@ func NewWithService(service *WhoopService) *mcp.Server {
 	registerBodyTool(server, service)
 	registerProfileTool(server, service)
 	registerRecoveryTool(server, service)
+	registerAccessTool(server, service)
 	registerSleepTool(server, service)
 	registerWorkoutTool(server, service)
 

@@ -27,6 +27,7 @@ type App struct {
 type tokenManager interface {
 	AccessToken(ctx context.Context) (string, error)
 	Refresh(ctx context.Context) (string, error)
+	ClearToken(ctx context.Context) error
 }
 
 type whoopClient interface {
@@ -36,6 +37,7 @@ type whoopClient interface {
 	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
 	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)
+	RevokeAccess(ctx context.Context, accessToken string) error
 	Sleep(ctx context.Context, accessToken string, sleepID string) (whoop.Sleep, error)
 	SleepForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Sleep, error)
 	Sleeps(ctx context.Context, accessToken string, query whoop.SleepQuery) (whoop.SleepCollection, error)
@@ -147,6 +149,8 @@ func (app *App) runAuth(ctx context.Context, args []string, stdout io.Writer) er
 		return app.runAuthStatus(stdout)
 	case "refresh":
 		return app.runAuthRefresh(ctx, stdout)
+	case "revoke":
+		return app.runAuthRevoke(ctx, args[1:], stdout)
 	default:
 		return fmt.Errorf("unknown auth command: %s", args[0])
 	}
@@ -279,6 +283,28 @@ func (app *App) runAuthRefresh(ctx context.Context, stdout io.Writer) error {
 	}
 
 	fmt.Fprintln(stdout, "Token refreshed")
+	return nil
+}
+
+func (app *App) runAuthRevoke(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) != 0 {
+		return fmt.Errorf("usage: whoopctl auth revoke")
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	if err := app.whoopClient().RevokeAccess(ctx, token); err != nil {
+		return err
+	}
+
+	if err := app.tokenManager().ClearToken(ctx); err != nil {
+		return err
+	}
+
+	fmt.Fprintln(stdout, "Access revoked")
 	return nil
 }
 

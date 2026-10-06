@@ -229,6 +229,15 @@ func TestGetRecoveryReturnsWhoopError(t *testing.T) {
 type fakeTokenManager struct {
 	accessToken    string
 	accessTokenErr error
+	clearErr       error
+	onClearToken   func()
+}
+
+func (f fakeTokenManager) ClearToken(ctx context.Context) error {
+	if f.onClearToken != nil {
+		f.onClearToken()
+	}
+	return f.clearErr
 }
 
 func (f fakeTokenManager) AccessToken(ctx context.Context) (string, error) {
@@ -256,6 +265,8 @@ type fakeWhoopClient struct {
 	recoveryErr         error
 	recoveryForCycle    whoop.Recovery
 	recoveryForCycleErr error
+	revokeErr           error
+	onRevoke            func()
 	sleep               whoop.Sleep
 	sleepErr            error
 	sleepForCycle       whoop.Sleep
@@ -342,6 +353,19 @@ func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query
 		return whoop.RecoveryCollection{}, f.recoveryErr
 	}
 	return f.recovery, nil
+}
+
+func (f fakeWhoopClient) RevokeAccess(ctx context.Context, accessToken string) error {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.onRevoke != nil {
+		f.onRevoke()
+	}
+	return f.revokeErr
 }
 
 func (f fakeWhoopClient) RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error) {

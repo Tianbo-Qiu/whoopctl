@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -147,6 +148,19 @@ func LoadToken(configDir string) (StoredToken, error) {
 	}
 
 	return NormalizeToken(token)
+}
+
+func DeleteToken(configDir string) error {
+	path, err := TokenPath(configDir)
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	return nil
 }
 
 func NormalizeToken(token StoredToken) (StoredToken, error) {
