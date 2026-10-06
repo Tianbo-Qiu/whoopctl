@@ -31,6 +31,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
+	ActivityMapping(ctx context.Context, accessToken string, activityV1ID int64) (whoop.ActivityMapping, error)
 	BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error)
 	BodyMeasurement(ctx context.Context, accessToken string) (whoop.BodyMeasurement, error)
 	Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error)
@@ -69,6 +70,8 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 	case "version":
 		fmt.Fprintln(stdout, "whoopctl dev")
 		return nil
+	case "activity":
+		return app.runActivity(ctx, args[1:], stdout)
 	case "auth":
 		return app.runAuth(ctx, args[1:], stdout)
 	case "body":
@@ -86,6 +89,38 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
+}
+
+func (app *App) runActivity(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) == 0 || args[0] != "map" {
+		return fmt.Errorf("usage: whoopctl activity map <v1-activity-id>")
+	}
+	return app.runActivityMapping(ctx, args[1:], stdout)
+}
+
+func (app *App) runActivityMapping(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: whoopctl activity map <v1-activity-id>")
+	}
+
+	activityV1ID, err := strconv.ParseInt(args[0], 10, 64)
+	if err != nil || activityV1ID <= 0 {
+		return fmt.Errorf("v1 activity id must be a positive integer")
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	mapping, err := app.whoopClient().ActivityMapping(ctx, token, activityV1ID)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(mapping)
 }
 
 func (app *App) runBody(ctx context.Context, args []string, stdout io.Writer) error {

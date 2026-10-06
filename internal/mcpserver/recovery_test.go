@@ -250,6 +250,9 @@ func (f fakeTokenManager) AccessToken(ctx context.Context) (string, error) {
 type fakeWhoopClient struct {
 	t                   *testing.T
 	wantAccessToken     string
+	wantActivityV1ID    int64
+	activityMapping     whoop.ActivityMapping
+	activityMappingErr  error
 	profile             whoop.BasicProfile
 	profileErr          error
 	body                whoop.BodyMeasurement
@@ -279,6 +282,22 @@ type fakeWhoopClient struct {
 	workouts            whoop.WorkoutCollection
 	workoutsErr         error
 	wantWorkoutID       string
+}
+
+func (f fakeWhoopClient) ActivityMapping(ctx context.Context, accessToken string, activityV1ID int64) (whoop.ActivityMapping, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantActivityV1ID != 0 && activityV1ID != f.wantActivityV1ID {
+		f.t.Fatalf("activityV1ID = %d, want %d", activityV1ID, f.wantActivityV1ID)
+	}
+	if f.activityMappingErr != nil {
+		return whoop.ActivityMapping{}, f.activityMappingErr
+	}
+	return f.activityMapping, nil
 }
 
 func (f fakeWhoopClient) BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error) {

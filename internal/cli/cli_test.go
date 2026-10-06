@@ -138,6 +138,118 @@ func TestRunProfileRejectsInvalidArgs(t *testing.T) {
 	}
 }
 
+func TestRunActivityMappingPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:                t,
+		wantAccessToken:  "access-token",
+		wantActivityV1ID: 12345,
+		activityMapping:  whoop.ActivityMapping{V2ActivityID: "ecfc6a15-4661-442f-a9a4-f160dd7afae8"},
+	}
+
+	err := app.Run(context.Background(), []string{"activity", "map", "12345"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := `{
+  "v2_activity_id": "ecfc6a15-4661-442f-a9a4-f160dd7afae8"
+}
+`
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunActivityMappingRejectsInvalidArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing subcommand",
+			args:    []string{"activity"},
+			wantErr: "usage: whoopctl activity map <v1-activity-id>",
+		},
+		{
+			name:    "unknown subcommand",
+			args:    []string{"activity", "get", "12345"},
+			wantErr: "usage: whoopctl activity map <v1-activity-id>",
+		},
+		{
+			name:    "missing id",
+			args:    []string{"activity", "map"},
+			wantErr: "usage: whoopctl activity map <v1-activity-id>",
+		},
+		{
+			name:    "extra arg",
+			args:    []string{"activity", "map", "12345", "extra"},
+			wantErr: "usage: whoopctl activity map <v1-activity-id>",
+		},
+		{
+			name:    "not integer",
+			args:    []string{"activity", "map", "nope"},
+			wantErr: "v1 activity id must be a positive integer",
+		},
+		{
+			name:    "zero",
+			args:    []string{"activity", "map", "0"},
+			wantErr: "v1 activity id must be a positive integer",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			accessTokenCalled := false
+
+			app := NewApp(t.TempDir())
+			app.TokenManager = fakeTokenManager{
+				onAccessToken: func() {
+					accessTokenCalled = true
+				},
+			}
+
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if accessTokenCalled {
+				t.Fatal("AccessToken was called")
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
+	}
+}
+
+func TestRunActivityMappingReturnsWhoopError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{activityMappingErr: fmt.Errorf("activity mapping failed")}
+
+	err := app.Run(context.Background(), []string{"activity", "map", "12345"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "activity mapping failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want empty", got)
+	}
+}
+
 func TestRunBodyPrintsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 
@@ -1468,6 +1580,9 @@ func (f fakeTokenManager) Refresh(ctx context.Context) (string, error) {
 type fakeWhoopClient struct {
 	t                   *testing.T
 	wantAccessToken     string
+	wantActivityV1ID    int64
+	activityMapping     whoop.ActivityMapping
+	activityMappingErr  error
 	profile             whoop.BasicProfile
 	profileErr          error
 	body                whoop.BodyMeasurement
@@ -1497,6 +1612,22 @@ type fakeWhoopClient struct {
 	workouts            whoop.WorkoutCollection
 	workoutsErr         error
 	wantWorkoutID       string
+}
+
+func (f fakeWhoopClient) ActivityMapping(ctx context.Context, accessToken string, activityV1ID int64) (whoop.ActivityMapping, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantActivityV1ID != 0 && activityV1ID != f.wantActivityV1ID {
+		f.t.Fatalf("activityV1ID = %d, want %d", activityV1ID, f.wantActivityV1ID)
+	}
+	if f.activityMappingErr != nil {
+		return whoop.ActivityMapping{}, f.activityMappingErr
+	}
+	return f.activityMapping, nil
 }
 
 func (f fakeWhoopClient) BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error) {

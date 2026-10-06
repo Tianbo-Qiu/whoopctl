@@ -124,6 +124,7 @@ Run `whoopctl auth login` again to re-authorize afterwards.
 | Basic user profile | `whoopctl profile` |
 | Body measurement | `whoopctl body` |
 | Revoke user access | `whoopctl auth revoke` |
+| Activity ID mapping | `whoopctl activity map V1_ACTIVITY_ID` |
 
 Paginated collection commands accept the same filtering flags:
 
@@ -154,7 +155,7 @@ whoopctl recovery --next-token NEXT_TOKEN
 }
 ```
 
-After connecting, the server exposes tools for supported WHOOP endpoints, including `get_recovery`, `get_recovery_for_cycle`, `get_cycle`, `get_cycle_by_id`, `get_sleep`, `get_sleep_by_id`, `get_sleep_for_cycle`, `get_workout`, `get_workout_by_id`, `get_profile_basic`, `get_body_measurement`, and `revoke_user_access`.
+After connecting, the server exposes tools for supported WHOOP endpoints, including `get_recovery`, `get_recovery_for_cycle`, `get_cycle`, `get_cycle_by_id`, `get_sleep`, `get_sleep_by_id`, `get_sleep_for_cycle`, `get_workout`, `get_workout_by_id`, `get_profile_basic`, `get_body_measurement`, `get_activity_mapping`, and `revoke_user_access`.
 
 ## Roadmap
 
@@ -185,4 +186,4 @@ Auth is handled by the CLI and shared by the local MCP server through the same l
 | Basic user profile | ✅ | ✅ |
 | Body measurement | ✅ | ✅ |
 | Revoke user access | ✅ | ✅ |
-| Activity ID mapping |  |  |
+| Activity ID mapping | ✅ | ✅ |

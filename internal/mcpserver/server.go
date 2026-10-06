@@ -14,6 +14,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
+	ActivityMapping(ctx context.Context, accessToken string, activityV1ID int64) (whoop.ActivityMapping, error)
 	BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error)
 	BodyMeasurement(ctx context.Context, accessToken string) (whoop.BodyMeasurement, error)
 	Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error)
@@ -48,6 +49,7 @@ func NewWithService(service *WhoopService) *mcp.Server {
 		Version: "dev",
 	}, nil)
 
+	registerActivityTool(server, service)
 	registerCycleTool(server, service)
 	registerBodyTool(server, service)
 	registerProfileTool(server, service)
