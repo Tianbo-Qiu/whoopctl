@@ -259,6 +259,11 @@ type fakeWhoopClient struct {
 	sleeps              whoop.SleepCollection
 	sleepsErr           error
 	wantSleepID         string
+	workout             whoop.Workout
+	workoutErr          error
+	workouts            whoop.WorkoutCollection
+	workoutsErr         error
+	wantWorkoutID       string
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
@@ -368,4 +373,33 @@ func (f fakeWhoopClient) Sleeps(ctx context.Context, accessToken string, query w
 		return whoop.SleepCollection{}, f.sleepsErr
 	}
 	return f.sleeps, nil
+}
+
+func (f fakeWhoopClient) Workout(ctx context.Context, accessToken string, workoutID string) (whoop.Workout, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantWorkoutID != "" && workoutID != f.wantWorkoutID {
+		f.t.Fatalf("workoutID = %q, want %q", workoutID, f.wantWorkoutID)
+	}
+	if f.workoutErr != nil {
+		return whoop.Workout{}, f.workoutErr
+	}
+	return f.workout, nil
+}
+
+func (f fakeWhoopClient) Workouts(ctx context.Context, accessToken string, query whoop.WorkoutQuery) (whoop.WorkoutCollection, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.workoutsErr != nil {
+		return whoop.WorkoutCollection{}, f.workoutsErr
+	}
+	return f.workouts, nil
 }

@@ -111,6 +111,8 @@ whoopctl auth refresh
 | Sleep collection | `whoopctl sleep --limit 1` |
 | Sleep by ID | `whoopctl sleep get SLEEP_ID` |
 | Sleep by cycle | `whoopctl sleep cycle CYCLE_ID` |
+| Workout collection | `whoopctl workout --limit 1` |
+| Workout by ID | `whoopctl workout get WORKOUT_ID` |
 
 Paginated collection commands accept the same filtering flags:
 
@@ -141,7 +143,7 @@ whoopctl recovery --next-token NEXT_TOKEN
 }
 ```
 
-After connecting, the server exposes tools for supported WHOOP endpoints, including `get_recovery`, `get_recovery_for_cycle`, `get_cycle`, `get_cycle_by_id`, `get_sleep`, `get_sleep_by_id`, and `get_sleep_for_cycle`.
+After connecting, the server exposes tools for supported WHOOP endpoints, including `get_recovery`, `get_recovery_for_cycle`, `get_cycle`, `get_cycle_by_id`, `get_sleep`, `get_sleep_by_id`, `get_sleep_for_cycle`, `get_workout`, and `get_workout_by_id`.
 
 ## Roadmap
 
@@ -167,8 +169,8 @@ Auth is handled by the CLI and shared by the local MCP server through the same l
 | Sleep collection | ✅ | ✅ |
 | Sleep by ID | ✅ | ✅ |
 | Sleep by cycle | ✅ | ✅ |
-| Workout collection |  |  |
-| Workout by ID |  |  |
+| Workout collection | ✅ | ✅ |
+| Workout by ID | ✅ | ✅ |
 | Basic user profile |  |  |
 | Body measurement |  |  |
 | Revoke user access |  |  |

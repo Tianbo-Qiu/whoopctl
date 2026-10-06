@@ -475,6 +475,82 @@ func TestRunSleepRejectsInvalidArgs(t *testing.T) {
 	}
 }
 
+func TestRunWorkoutPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		workouts: whoop.WorkoutCollection{
+			Records:   []whoop.Workout{testWorkout()},
+			NextToken: "next-token",
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"workout", "--limit", "1"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"sport_name": "running"`) {
+		t.Fatalf("stdout = %q, missing sport_name", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"next_token": "next-token"`) {
+		t.Fatalf("stdout = %q, missing next_token", stdout.String())
+	}
+}
+
+func TestRunWorkoutByIDPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantWorkoutID:   "123e4567-e89b-12d3-a456-426614174000",
+		workout:         testWorkout(),
+	}
+
+	err := app.Run(context.Background(), []string{"workout", "get", "123e4567-e89b-12d3-a456-426614174000"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"score_state": "SCORED"`) {
+		t.Fatalf("stdout = %q, missing score_state", stdout.String())
+	}
+}
+
+func TestRunWorkoutRejectsInvalidArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "invalid limit", args: []string{"workout", "--limit", "nope"}, wantErr: "--limit must be an integer"},
+		{name: "missing workout id", args: []string{"workout", "get"}, wantErr: "usage: whoopctl workout get <workout-id>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			app := NewApp(t.TempDir())
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestRunRecoveryPrintsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
@@ -1181,6 +1257,11 @@ type fakeWhoopClient struct {
 	sleeps              whoop.SleepCollection
 	sleepsErr           error
 	wantSleepID         string
+	workout             whoop.Workout
+	workoutErr          error
+	workouts            whoop.WorkoutCollection
+	workoutsErr         error
+	wantWorkoutID       string
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
@@ -1305,5 +1386,64 @@ func testSleep() whoop.Sleep {
 		TimezoneOffset: "-05:00",
 		Nap:            false,
 		ScoreState:     "SCORED",
+	}
+}
+
+func (f fakeWhoopClient) Workout(ctx context.Context, accessToken string, workoutID string) (whoop.Workout, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantWorkoutID != "" && workoutID != f.wantWorkoutID {
+		f.t.Fatalf("workoutID = %q, want %q", workoutID, f.wantWorkoutID)
+	}
+	if f.workoutErr != nil {
+		return whoop.Workout{}, f.workoutErr
+	}
+	return f.workout, nil
+}
+
+func (f fakeWhoopClient) Workouts(ctx context.Context, accessToken string, query whoop.WorkoutQuery) (whoop.WorkoutCollection, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.workoutsErr != nil {
+		return whoop.WorkoutCollection{}, f.workoutsErr
+	}
+	return f.workouts, nil
+}
+
+func testWorkout() whoop.Workout {
+	timestamp := time.Date(2022, 4, 24, 2, 25, 44, 774000000, time.UTC)
+	return whoop.Workout{
+		ID:             "123e4567-e89b-12d3-a456-426614174000",
+		UserID:         10129,
+		CreatedAt:      timestamp,
+		UpdatedAt:      timestamp,
+		Start:          timestamp,
+		End:            timestamp.Add(time.Hour),
+		TimezoneOffset: "-05:00",
+		SportName:      "running",
+		ScoreState:     "SCORED",
+		Score: &whoop.WorkoutScore{
+			Strain:           8.2463,
+			AverageHeartRate: 123,
+			MaxHeartRate:     146,
+			Kilojoule:        1569.34033203125,
+			PercentRecorded:  100,
+			ZoneDurations: whoop.ZoneDurations{
+				ZoneZeroMilli:  300000,
+				ZoneOneMilli:   600000,
+				ZoneTwoMilli:   900000,
+				ZoneThreeMilli: 900000,
+				ZoneFourMilli:  600000,
+				ZoneFiveMilli:  300000,
+			},
+		},
 	}
 }

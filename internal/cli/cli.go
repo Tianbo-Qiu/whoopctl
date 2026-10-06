@@ -37,6 +37,8 @@ type whoopClient interface {
 	Sleep(ctx context.Context, accessToken string, sleepID string) (whoop.Sleep, error)
 	SleepForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Sleep, error)
 	Sleeps(ctx context.Context, accessToken string, query whoop.SleepQuery) (whoop.SleepCollection, error)
+	Workout(ctx context.Context, accessToken string, workoutID string) (whoop.Workout, error)
+	Workouts(ctx context.Context, accessToken string, query whoop.WorkoutQuery) (whoop.WorkoutCollection, error)
 }
 
 func NewApp(configDir string) *App {
@@ -71,6 +73,8 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 		return app.runRecovery(ctx, args[1:], stdout)
 	case "sleep":
 		return app.runSleep(ctx, args[1:], stdout)
+	case "workout":
+		return app.runWorkout(ctx, args[1:], stdout)
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
@@ -398,6 +402,51 @@ func (app *App) runSleepForCycle(ctx context.Context, args []string, stdout io.W
 	return encoder.Encode(sleep)
 }
 
+func (app *App) runWorkout(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) > 0 && args[0] == "get" {
+		return app.runWorkoutByID(ctx, args[1:], stdout)
+	}
+
+	query, err := workoutQuery(args)
+	if err != nil {
+		return err
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	workouts, err := app.whoopClient().Workouts(ctx, token, query)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(workouts)
+}
+
+func (app *App) runWorkoutByID(ctx context.Context, args []string, stdout io.Writer) error {
+	if len(args) != 1 {
+		return fmt.Errorf("usage: whoopctl workout get <workout-id>")
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	workout, err := app.whoopClient().Workout(ctx, token, args[0])
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(workout)
+}
+
 func cycleQuery(args []string) (whoop.CycleQuery, error) {
 	var query whoop.CycleQuery
 
@@ -490,6 +539,55 @@ func sleepQuery(args []string) (whoop.SleepQuery, error) {
 			query.NextToken = args[i]
 		default:
 			return whoop.SleepQuery{}, fmt.Errorf("unknown option: %s", args[i])
+		}
+	}
+
+	return query, nil
+}
+
+func workoutQuery(args []string) (whoop.WorkoutQuery, error) {
+	var query whoop.WorkoutQuery
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--limit":
+			i++
+			if i >= len(args) {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--limit requires a value")
+			}
+			limit, err := strconv.Atoi(args[i])
+			if err != nil {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--limit must be an integer")
+			}
+			query.Limit = limit
+		case "--start":
+			i++
+			if i >= len(args) {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--start requires a value")
+			}
+			start, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--start must be RFC3339")
+			}
+			query.Start = start
+		case "--end":
+			i++
+			if i >= len(args) {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--end requires a value")
+			}
+			end, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--end must be RFC3339")
+			}
+			query.End = end
+		case "--next-token":
+			i++
+			if i >= len(args) {
+				return whoop.WorkoutQuery{}, fmt.Errorf("--next-token requires a value")
+			}
+			query.NextToken = args[i]
+		default:
+			return whoop.WorkoutQuery{}, fmt.Errorf("unknown option: %s", args[i])
 		}
 	}
 

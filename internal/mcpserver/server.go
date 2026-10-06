@@ -20,6 +20,8 @@ type whoopClient interface {
 	Sleep(ctx context.Context, accessToken string, sleepID string) (whoop.Sleep, error)
 	SleepForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Sleep, error)
 	Sleeps(ctx context.Context, accessToken string, query whoop.SleepQuery) (whoop.SleepCollection, error)
+	Workout(ctx context.Context, accessToken string, workoutID string) (whoop.Workout, error)
+	Workouts(ctx context.Context, accessToken string, query whoop.WorkoutQuery) (whoop.WorkoutCollection, error)
 }
 
 type WhoopService struct {
@@ -45,6 +47,7 @@ func NewWithService(service *WhoopService) *mcp.Server {
 	registerCycleTool(server, service)
 	registerRecoveryTool(server, service)
 	registerSleepTool(server, service)
+	registerWorkoutTool(server, service)
 
 	return server
 }
