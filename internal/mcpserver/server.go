@@ -13,6 +13,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
+	BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error)
 	Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error)
 	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
@@ -45,6 +46,7 @@ func NewWithService(service *WhoopService) *mcp.Server {
 	}, nil)
 
 	registerCycleTool(server, service)
+	registerProfileTool(server, service)
 	registerRecoveryTool(server, service)
 	registerSleepTool(server, service)
 	registerWorkoutTool(server, service)

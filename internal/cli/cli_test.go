@@ -53,6 +53,91 @@ func TestRunUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestRunProfileBasicPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		profile: whoop.BasicProfile{
+			UserID:    10129,
+			Email:     "user@example.test",
+			FirstName: "Example",
+			LastName:  "User",
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"profile"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := `{
+  "user_id": 10129,
+  "email": "user@example.test",
+  "first_name": "Example",
+  "last_name": "User"
+}
+`
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+}
+
+func TestRunProfileBasicAlias(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		profile: whoop.BasicProfile{
+			UserID:    10129,
+			Email:     "user@example.test",
+			FirstName: "Example",
+			LastName:  "User",
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"profile", "basic"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"email": "user@example.test"`) {
+		t.Fatalf("stdout = %q, missing email", stdout.String())
+	}
+}
+
+func TestRunProfileRejectsInvalidArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "unknown command", args: []string{"profile", "nope"}, wantErr: "usage: whoopctl profile"},
+		{name: "basic extra arg", args: []string{"profile", "basic", "extra"}, wantErr: "usage: whoopctl profile"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			app := NewApp(t.TempDir())
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestRunCyclePrintsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
@@ -1239,6 +1324,8 @@ func (f fakeTokenManager) Refresh(ctx context.Context) (string, error) {
 type fakeWhoopClient struct {
 	t                   *testing.T
 	wantAccessToken     string
+	profile             whoop.BasicProfile
+	profileErr          error
 	wantCycleQuery      whoop.CycleQuery
 	wantQuery           whoop.RecoveryQuery
 	wantCycleID         int64
@@ -1262,6 +1349,19 @@ type fakeWhoopClient struct {
 	workouts            whoop.WorkoutCollection
 	workoutsErr         error
 	wantWorkoutID       string
+}
+
+func (f fakeWhoopClient) BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.profileErr != nil {
+		return whoop.BasicProfile{}, f.profileErr
+	}
+	return f.profile, nil
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {

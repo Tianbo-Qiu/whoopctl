@@ -241,6 +241,8 @@ func (f fakeTokenManager) AccessToken(ctx context.Context) (string, error) {
 type fakeWhoopClient struct {
 	t                   *testing.T
 	wantAccessToken     string
+	profile             whoop.BasicProfile
+	profileErr          error
 	wantCycleQuery      whoop.CycleQuery
 	wantQuery           whoop.RecoveryQuery
 	wantCycleID         int64
@@ -264,6 +266,19 @@ type fakeWhoopClient struct {
 	workouts            whoop.WorkoutCollection
 	workoutsErr         error
 	wantWorkoutID       string
+}
+
+func (f fakeWhoopClient) BasicProfile(ctx context.Context, accessToken string) (whoop.BasicProfile, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.profileErr != nil {
+		return whoop.BasicProfile{}, f.profileErr
+	}
+	return f.profile, nil
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
