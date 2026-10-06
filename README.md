@@ -167,7 +167,9 @@ Auth is handled by the CLI and shared by the local MCP server through the same l
 | --- | --- |
 | Setup app credentials | ✅ |
 | Login with WHOOP | ✅ |
+| Check auth status | ✅ |
 | Refresh token | ✅ |
+| Revoke access | ✅ |
 
 > [!NOTE]
 > `whoopctl` supports the standard WHOOP member OAuth API. Trusted Partner endpoints are not supported because WHOOP documents them as a separate healthcare partner API for approved partners only. Those endpoints use the OAuth 2.0 client credentials grant with partner credentials, without a WHOOP member login.
@@ -187,3 +189,24 @@ Auth is handled by the CLI and shared by the local MCP server through the same l
 | Body measurement | ✅ | ✅ |
 | Revoke user access | ✅ | ✅ |
 | Activity ID mapping | ✅ | ✅ |
+
+## Links
+
+WHOOP:
+
+- [WHOOP for Developers](https://developer.whoop.com/): developer platform home
+- [WHOOP Developer Dashboard](https://developer-dashboard.whoop.com/): create and manage your app, credentials, redirect URL, and scopes
+- [WHOOP API reference](https://developer.whoop.com/api): endpoints, request parameters, and response schemas
+- [WHOOP OpenAPI spec](https://api.prod.whoop.com/developer/doc/openapi.json): machine-readable OpenAPI 3.0 definition of the API
+- [OAuth 2.0](https://developer.whoop.com/docs/developing/oauth): authorization code flow, scopes, and token refresh
+- [API rate limiting](https://developer.whoop.com/docs/developing/rate-limiting): request limits and `429` handling
+- [v1 to v2 migration guide](https://developer.whoop.com/docs/developing/v1-v2-migration): background for `whoopctl activity map`
+
+MCP:
+
+- [Model Context Protocol](https://modelcontextprotocol.io/): protocol docs and client setup
+- [MCP Go SDK](https://github.com/modelcontextprotocol/go-sdk): SDK used by `whoopctl-mcp`
+
+Project:
+
+- [Privacy policy](https://tianbo-qiu.github.io/whoopctl/privacy)
