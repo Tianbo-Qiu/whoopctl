@@ -53,6 +53,207 @@ func TestRunUnknownCommand(t *testing.T) {
 	}
 }
 
+func TestRunCyclePrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
+	updatedAt := time.Date(2022, 4, 24, 14, 25, 44, 774000000, time.UTC)
+	start := time.Date(2022, 4, 24, 2, 25, 44, 774000000, time.UTC)
+	end := time.Date(2022, 4, 24, 10, 25, 44, 774000000, time.UTC)
+	stepCount := 8234
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantCycleQuery:  whoop.CycleQuery{},
+		cycles: whoop.CycleCollection{
+			Records: []whoop.Cycle{
+				{
+					ID:             93845,
+					UserID:         10129,
+					CreatedAt:      createdAt,
+					UpdatedAt:      updatedAt,
+					Start:          start,
+					End:            &end,
+					TimezoneOffset: "-05:00",
+					ScoreState:     "SCORED",
+					Score: &whoop.CycleScore{
+						Strain:           5.2951527,
+						Kilojoule:        8288.297,
+						AverageHeartRate: 68,
+						MaxHeartRate:     141,
+					},
+					StepCount: &stepCount,
+				},
+			},
+			NextToken: "next-token",
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"cycle"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	want := `{
+  "records": [
+    {
+      "id": 93845,
+      "user_id": 10129,
+      "created_at": "2022-04-24T11:25:44.774Z",
+      "updated_at": "2022-04-24T14:25:44.774Z",
+      "start": "2022-04-24T02:25:44.774Z",
+      "end": "2022-04-24T10:25:44.774Z",
+      "timezone_offset": "-05:00",
+      "score_state": "SCORED",
+      "score": {
+        "strain": 5.2951527,
+        "kilojoule": 8288.297,
+        "average_heart_rate": 68,
+        "max_heart_rate": 141
+      },
+      "step_count": 8234
+    }
+  ],
+  "next_token": "next-token"
+}
+`
+	if got := stdout.String(); got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if got := stderr.String(); got != "" {
+		t.Fatalf("stderr = %q, want empty", got)
+	}
+}
+
+func TestRunCyclePassesQuery(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	start := time.Date(2026, 1, 2, 3, 4, 5, 123456789, time.UTC)
+	end := time.Date(2026, 1, 3, 3, 4, 5, 987654321, time.UTC)
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantCycleQuery: whoop.CycleQuery{
+			Limit:     25,
+			Start:     start,
+			End:       end,
+			NextToken: "next-token",
+		},
+		cycles: whoop.CycleCollection{Records: []whoop.Cycle{}},
+	}
+
+	err := app.Run(context.Background(), []string{
+		"cycle",
+		"--limit", "25",
+		"--start", start.Format(time.RFC3339Nano),
+		"--end", end.Format(time.RFC3339Nano),
+		"--next-token", "next-token",
+	}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+}
+
+func TestRunCycleRejectsInvalidLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "missing limit",
+			args:    []string{"cycle", "--limit"},
+			wantErr: "--limit requires a value",
+		},
+		{
+			name:    "invalid limit",
+			args:    []string{"cycle", "--limit", "nope"},
+			wantErr: "--limit must be an integer",
+		},
+		{
+			name:    "missing start",
+			args:    []string{"cycle", "--start"},
+			wantErr: "--start requires a value",
+		},
+		{
+			name:    "invalid start",
+			args:    []string{"cycle", "--start", "2026-01-02"},
+			wantErr: "--start must be RFC3339",
+		},
+		{
+			name:    "missing end",
+			args:    []string{"cycle", "--end"},
+			wantErr: "--end requires a value",
+		},
+		{
+			name:    "invalid end",
+			args:    []string{"cycle", "--end", "2026-01-03"},
+			wantErr: "--end must be RFC3339",
+		},
+		{
+			name:    "missing next token",
+			args:    []string{"cycle", "--next-token"},
+			wantErr: "--next-token requires a value",
+		},
+		{
+			name:    "unknown option",
+			args:    []string{"cycle", "--wat"},
+			wantErr: "unknown option: --wat",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			accessTokenCalled := false
+
+			app := NewApp(t.TempDir())
+			app.TokenManager = fakeTokenManager{
+				onAccessToken: func() {
+					accessTokenCalled = true
+				},
+			}
+
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if accessTokenCalled {
+				t.Fatal("AccessToken was called")
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
+	}
+}
+
+func TestRunCycleReturnsCycleError(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{cyclesErr: fmt.Errorf("cycles failed")}
+
+	err := app.Run(context.Background(), []string{"cycle"}, &stdout, &stderr)
+	if err == nil {
+		t.Fatal("Run returned nil error")
+	}
+	if got, want := err.Error(), "cycles failed"; got != want {
+		t.Fatalf("error = %q, want %q", got, want)
+	}
+	if got := stdout.String(); got != "" {
+		t.Fatalf("stdout = %q, want empty", got)
+	}
+}
+
 func TestRunRecoveryPrintsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
@@ -741,12 +942,31 @@ func (f fakeTokenManager) Refresh(ctx context.Context) (string, error) {
 type fakeWhoopClient struct {
 	t                   *testing.T
 	wantAccessToken     string
+	wantCycleQuery      whoop.CycleQuery
 	wantQuery           whoop.RecoveryQuery
 	wantCycleID         int64
+	cycles              whoop.CycleCollection
+	cyclesErr           error
 	recovery            whoop.RecoveryCollection
 	recoveryErr         error
 	recoveryForCycle    whoop.Recovery
 	recoveryForCycleErr error
+}
+
+func (f fakeWhoopClient) Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if query != f.wantCycleQuery {
+		f.t.Fatalf("query = %+v, want %+v", query, f.wantCycleQuery)
+	}
+	if f.cyclesErr != nil {
+		return whoop.CycleCollection{}, f.cyclesErr
+	}
+	return f.cycles, nil
 }
 
 func (f fakeWhoopClient) Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error) {

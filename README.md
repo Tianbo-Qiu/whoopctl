@@ -101,7 +101,7 @@ Auth is handled by the CLI and shared by the local MCP server through the same l
 | --- | --- | --- |
 | Recovery collection | ✅ | ✅ |
 | Recovery by cycle | ✅ | ✅ |
-| Cycle collection |  |  |
+| Cycle collection | ✅ | ✅ |
 | Cycle by ID |  |  |
 | Sleep collection |  |  |
 | Sleep by ID |  |  |

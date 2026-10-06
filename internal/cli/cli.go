@@ -30,6 +30,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
+	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
 	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)
 }
@@ -60,6 +61,8 @@ func (app *App) Run(ctx context.Context, args []string, stdout io.Writer, stderr
 		return nil
 	case "auth":
 		return app.runAuth(ctx, args[1:], stdout)
+	case "cycle":
+		return app.runCycle(ctx, args[1:], stdout)
 	case "recovery":
 		return app.runRecovery(ctx, args[1:], stdout)
 	default:
@@ -216,6 +219,27 @@ func (app *App) runAuthRefresh(ctx context.Context, stdout io.Writer) error {
 	return nil
 }
 
+func (app *App) runCycle(ctx context.Context, args []string, stdout io.Writer) error {
+	query, err := cycleQuery(args)
+	if err != nil {
+		return err
+	}
+
+	token, err := app.tokenManager().AccessToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	cycles, err := app.whoopClient().Cycles(ctx, token, query)
+	if err != nil {
+		return err
+	}
+
+	encoder := json.NewEncoder(stdout)
+	encoder.SetIndent("", "  ")
+	return encoder.Encode(cycles)
+}
+
 func (app *App) runRecovery(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) > 0 && args[0] == "cycle" {
 		return app.runRecoveryForCycle(ctx, args[1:], stdout)
@@ -264,6 +288,55 @@ func (app *App) runRecoveryForCycle(ctx context.Context, args []string, stdout i
 	encoder := json.NewEncoder(stdout)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(recovery)
+}
+
+func cycleQuery(args []string) (whoop.CycleQuery, error) {
+	var query whoop.CycleQuery
+
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--limit":
+			i++
+			if i >= len(args) {
+				return whoop.CycleQuery{}, fmt.Errorf("--limit requires a value")
+			}
+			limit, err := strconv.Atoi(args[i])
+			if err != nil {
+				return whoop.CycleQuery{}, fmt.Errorf("--limit must be an integer")
+			}
+			query.Limit = limit
+		case "--start":
+			i++
+			if i >= len(args) {
+				return whoop.CycleQuery{}, fmt.Errorf("--start requires a value")
+			}
+			start, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return whoop.CycleQuery{}, fmt.Errorf("--start must be RFC3339")
+			}
+			query.Start = start
+		case "--end":
+			i++
+			if i >= len(args) {
+				return whoop.CycleQuery{}, fmt.Errorf("--end requires a value")
+			}
+			end, err := time.Parse(time.RFC3339Nano, args[i])
+			if err != nil {
+				return whoop.CycleQuery{}, fmt.Errorf("--end must be RFC3339")
+			}
+			query.End = end
+		case "--next-token":
+			i++
+			if i >= len(args) {
+				return whoop.CycleQuery{}, fmt.Errorf("--next-token requires a value")
+			}
+			query.NextToken = args[i]
+		default:
+			return whoop.CycleQuery{}, fmt.Errorf("unknown option: %s", args[i])
+		}
+	}
+
+	return query, nil
 }
 
 func recoveryQuery(args []string) (whoop.RecoveryQuery, error) {

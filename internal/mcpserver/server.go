@@ -13,6 +13,7 @@ type tokenManager interface {
 }
 
 type whoopClient interface {
+	Cycles(ctx context.Context, accessToken string, query whoop.CycleQuery) (whoop.CycleCollection, error)
 	Recovery(ctx context.Context, accessToken string, query whoop.RecoveryQuery) (whoop.RecoveryCollection, error)
 	RecoveryForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Recovery, error)
 }
@@ -37,6 +38,7 @@ func NewWithService(service *WhoopService) *mcp.Server {
 		Version: "dev",
 	}, nil)
 
+	registerCycleTool(server, service)
 	registerRecoveryTool(server, service)
 
 	return server
