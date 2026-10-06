@@ -376,6 +376,105 @@ func TestRunCycleReturnsCycleError(t *testing.T) {
 	}
 }
 
+func TestRunSleepPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		sleeps: whoop.SleepCollection{
+			Records:   []whoop.Sleep{testSleep()},
+			NextToken: "next-token",
+		},
+	}
+
+	err := app.Run(context.Background(), []string{"sleep", "--limit", "1"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"id": "123e4567-e89b-12d3-a456-426614174000"`) {
+		t.Fatalf("stdout = %q, missing sleep id", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), `"next_token": "next-token"`) {
+		t.Fatalf("stdout = %q, missing next_token", stdout.String())
+	}
+}
+
+func TestRunSleepByIDPrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantSleepID:     "123e4567-e89b-12d3-a456-426614174000",
+		sleep:           testSleep(),
+	}
+
+	err := app.Run(context.Background(), []string{"sleep", "get", "123e4567-e89b-12d3-a456-426614174000"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"score_state": "SCORED"`) {
+		t.Fatalf("stdout = %q, missing score_state", stdout.String())
+	}
+}
+
+func TestRunSleepForCyclePrintsJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+
+	app := NewApp(t.TempDir())
+	app.TokenManager = fakeTokenManager{accessToken: "access-token"}
+	app.WhoopClient = fakeWhoopClient{
+		t:               t,
+		wantAccessToken: "access-token",
+		wantCycleID:     93845,
+		sleepForCycle:   testSleep(),
+	}
+
+	err := app.Run(context.Background(), []string{"sleep", "cycle", "93845"}, &stdout, &stderr)
+	if err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"cycle_id": 93845`) {
+		t.Fatalf("stdout = %q, missing cycle_id", stdout.String())
+	}
+}
+
+func TestRunSleepRejectsInvalidArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{name: "invalid limit", args: []string{"sleep", "--limit", "nope"}, wantErr: "--limit must be an integer"},
+		{name: "missing sleep id", args: []string{"sleep", "get"}, wantErr: "usage: whoopctl sleep get <sleep-id>"},
+		{name: "missing cycle id", args: []string{"sleep", "cycle"}, wantErr: "usage: whoopctl sleep cycle <cycle-id>"},
+		{name: "invalid cycle id", args: []string{"sleep", "cycle", "nope"}, wantErr: "cycle id must be a positive integer"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+
+			app := NewApp(t.TempDir())
+			err := app.Run(context.Background(), tt.args, &stdout, &stderr)
+			if err == nil {
+				t.Fatal("Run returned nil error")
+			}
+			if got := err.Error(); got != tt.wantErr {
+				t.Fatalf("error = %q, want %q", got, tt.wantErr)
+			}
+			if got := stdout.String(); got != "" {
+				t.Fatalf("stdout = %q, want empty", got)
+			}
+		})
+	}
+}
+
 func TestRunRecoveryPrintsJSON(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	createdAt := time.Date(2022, 4, 24, 11, 25, 44, 774000000, time.UTC)
@@ -1075,6 +1174,13 @@ type fakeWhoopClient struct {
 	recoveryErr         error
 	recoveryForCycle    whoop.Recovery
 	recoveryForCycleErr error
+	sleep               whoop.Sleep
+	sleepErr            error
+	sleepForCycle       whoop.Sleep
+	sleepForCycleErr    error
+	sleeps              whoop.SleepCollection
+	sleepsErr           error
+	wantSleepID         string
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
@@ -1139,4 +1245,65 @@ func (f fakeWhoopClient) RecoveryForCycle(ctx context.Context, accessToken strin
 		return whoop.Recovery{}, f.recoveryForCycleErr
 	}
 	return f.recoveryForCycle, nil
+}
+
+func (f fakeWhoopClient) Sleep(ctx context.Context, accessToken string, sleepID string) (whoop.Sleep, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantSleepID != "" && sleepID != f.wantSleepID {
+		f.t.Fatalf("sleepID = %q, want %q", sleepID, f.wantSleepID)
+	}
+	if f.sleepErr != nil {
+		return whoop.Sleep{}, f.sleepErr
+	}
+	return f.sleep, nil
+}
+
+func (f fakeWhoopClient) SleepForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Sleep, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantCycleID != 0 && cycleID != f.wantCycleID {
+		f.t.Fatalf("cycleID = %d, want %d", cycleID, f.wantCycleID)
+	}
+	if f.sleepForCycleErr != nil {
+		return whoop.Sleep{}, f.sleepForCycleErr
+	}
+	return f.sleepForCycle, nil
+}
+
+func (f fakeWhoopClient) Sleeps(ctx context.Context, accessToken string, query whoop.SleepQuery) (whoop.SleepCollection, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.sleepsErr != nil {
+		return whoop.SleepCollection{}, f.sleepsErr
+	}
+	return f.sleeps, nil
+}
+
+func testSleep() whoop.Sleep {
+	timestamp := time.Date(2022, 4, 24, 2, 25, 44, 774000000, time.UTC)
+	return whoop.Sleep{
+		ID:             "123e4567-e89b-12d3-a456-426614174000",
+		CycleID:        93845,
+		UserID:         10129,
+		CreatedAt:      timestamp,
+		UpdatedAt:      timestamp,
+		Start:          timestamp,
+		End:            timestamp.Add(8 * time.Hour),
+		TimezoneOffset: "-05:00",
+		Nap:            false,
+		ScoreState:     "SCORED",
+	}
 }

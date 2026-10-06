@@ -252,6 +252,13 @@ type fakeWhoopClient struct {
 	recoveryErr         error
 	recoveryForCycle    whoop.Recovery
 	recoveryForCycleErr error
+	sleep               whoop.Sleep
+	sleepErr            error
+	sleepForCycle       whoop.Sleep
+	sleepForCycleErr    error
+	sleeps              whoop.SleepCollection
+	sleepsErr           error
+	wantSleepID         string
 }
 
 func (f fakeWhoopClient) Cycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Cycle, error) {
@@ -316,4 +323,49 @@ func (f fakeWhoopClient) RecoveryForCycle(ctx context.Context, accessToken strin
 		return whoop.Recovery{}, f.recoveryForCycleErr
 	}
 	return f.recoveryForCycle, nil
+}
+
+func (f fakeWhoopClient) Sleep(ctx context.Context, accessToken string, sleepID string) (whoop.Sleep, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantSleepID != "" && sleepID != f.wantSleepID {
+		f.t.Fatalf("sleepID = %q, want %q", sleepID, f.wantSleepID)
+	}
+	if f.sleepErr != nil {
+		return whoop.Sleep{}, f.sleepErr
+	}
+	return f.sleep, nil
+}
+
+func (f fakeWhoopClient) SleepForCycle(ctx context.Context, accessToken string, cycleID int64) (whoop.Sleep, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.wantCycleID != 0 && cycleID != f.wantCycleID {
+		f.t.Fatalf("cycleID = %d, want %d", cycleID, f.wantCycleID)
+	}
+	if f.sleepForCycleErr != nil {
+		return whoop.Sleep{}, f.sleepForCycleErr
+	}
+	return f.sleepForCycle, nil
+}
+
+func (f fakeWhoopClient) Sleeps(ctx context.Context, accessToken string, query whoop.SleepQuery) (whoop.SleepCollection, error) {
+	if f.t != nil {
+		f.t.Helper()
+	}
+	if f.wantAccessToken != "" && accessToken != f.wantAccessToken {
+		f.t.Fatalf("accessToken = %q, want %q", accessToken, f.wantAccessToken)
+	}
+	if f.sleepsErr != nil {
+		return whoop.SleepCollection{}, f.sleepsErr
+	}
+	return f.sleeps, nil
 }
