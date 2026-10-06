@@ -10,6 +10,8 @@
 
 `whoopctl` is a CLI and local MCP server for working with your own WHOOP data. It stores credentials locally and calls the WHOOP API directly from your machine.
 
+![demo](docs/assets/demo.png)
+
 ## Install
 
 Build the CLI and MCP server binaries from the repo:
